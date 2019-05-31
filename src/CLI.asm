@@ -297,33 +297,22 @@ loop_readentries:
 		;		If the parent directory is the root directory, cluster number 0x0000 is specified here.
 		; Any other character for first character of a real filename.
 		ld		ix, (buffer_pgm)		; byte pointer within the 32 bytes group
+		call	F_KRN_F16_GETENTRYDATA	; get data for this entry
 		ld		a, (ix)					; load contents of pointed memory address
 		cp		0						; is it no file, therefore directory is empty?
-;		ret		z						; yes, exit routine
 		jp		z, nextsector			; yes, load next sector
 		cp		$E5						; no, is it a deleted file?
 		jp		z, nextentry			; yes, skip entry
-		
+										; no, continue
 		; if it's a Long File Name (LFN) entry, skip it
-		ld		a, (ix + $0b)			; read 0x0b (File attributes)
+		ld		a, (cur_file_attribs)
 		cp		0Fh						; is it Long File Name entry?
 		jp		z, nextentry			; yes, skip entry
 										; no, continue
 		; if it was no LFN, then 0x0b holds the File attributes
-		ld		(file_attributes), a	; store File attributes for later use
-		; 0x0b 	1 byte 		File attributes
-		;	Bit 0	0x01	Indicates that the file is read only.
-		;	Bit 1	0x02	Indicates a hidden file. Such files can be displayed if it is really required.
-		;	Bit 2	0x04	Indicates a system file. These are hidden as well.
-		;	Bit 3	0x08	Indicates a special entry containing the disk's volume label, instead of describing a file. This kind of entry appears only in the root directory.
-		;	Bit 4	0x10	The entry describes a subdirectory.
-		;	Bit 5	0x20	This is the archive flag. This can be set and cleared by the programmer or user, but is always set when the file is modified. It is used by backup programs.
-		;	Bit 6	Not used; must be set to 0.
-		; 	Bit 7	Not used; must be set to 0.
 		bit		3, a					; is it disk's volume label entry?
 		jp		nz, nextentry			; yes, skip entry
-		call	F_CLI_F16_PRNDIRENTRY
-		jp		nextentry
+		call	F_CLI_F16_PRNDIRENTRY	; no, print to screen
 nextentry:
 		ld		de, 32					; skip 32 bytes
 		ld		hl, (buffer_pgm)		; byte pointer within the 32 bytes group
@@ -331,12 +320,12 @@ nextentry:
 		ld		(buffer_pgm), hl		; byte pointer within the 32 bytes group
 		jp		loop_readentries
 nextsector:
-		ld		hl, cur_sector
-		inc		(hl)
+		ld		hl, cur_sector			; current sector
+		inc		(hl)					; next sector
 		ld		a, 32
-		cp		(hl)
-		ret		z
-		jp		load_sector
+		cp		(hl)					; did we load all 32 bytes of the entry?
+		ret		z						; yes, exit routine
+		jp		load_sector				; no, load next sector
 ;------------------------------------------------------------------------------
 F_CLI_F16_PRNDIRENTRY:
 ; Prints an entry for a directory entry
@@ -345,12 +334,13 @@ F_CLI_F16_PRNDIRENTRY:
 ;	OUT => default output (e.g. screen, I/O)
 ;		ld		iy, (buffer_pgm)		; first byte of the address where the entry is located
 		; 0x00 	8 bytes 	File name
-		ld		hl, (buffer_pgm)		; byte pointer within the 32 bytes group
+		ld		hl, cur_file_name		; byte pointer within the 32 bytes group
 		ld		b, 8					; counter = 8 bytes
 		call	F_KRN_PRN_BYTES
 		; 0x08 	3 bytes 	File extension
-		ld		a, '.'					; no, print the dot between 
+		ld		a, '.'					; print the dot between 
 		call	F_BIOS_CONOUT			;    name and extension
+		ld		hl, cur_file_extension
 		ld		b, 3					; counter = 3 bytes
 		call	F_KRN_PRN_BYTES
 
@@ -360,186 +350,12 @@ F_CLI_F16_PRNDIRENTRY:
 		ld		a, SPACE
 		call	F_BIOS_CONOUT
 
-		; 0x0b 	1 byte 		File attributes
-		; 0x0c 	1 bytes 	Reserved
-		; 0x0d	1 byte		Created time refinement in 10ms (0-199)
-		; 0x0e 	2 bytes 	Time created
-		; 0x10 	2 bytes 	Date created
-		; 0x12	2 bytes		Last access date
-		; 0x14	2 bytes		First cluster (high word)
-		; 0x16	2 bytes		Time modified
-		; 		<------- 0x17 --------> <------- 0x16 -------->
-		;		07 06 05 04 03 02 01 00 07 06 05 04 03 02 01 00
-		;		h  h  h  h  h  m  m  m  m  m  m  x  x  x  x  x
-		;	hhhhh = binary number of hours (0-23)
-		;	mmmmmm = binary number of minutes (0-59)
-		;	xxxxx = binary number of two-second periods (0-29), representing seconds 0 to 58.
-		; extract hour (hhhhh) from MSB 0x17
-		ld		iy, (buffer_pgm)		; IY = first byte of the address where the entry is located
-		ld		bc, 16h					; offset for Time modified
-		add		iy, bc					; IY += offset
- 		ld		e, (iy + 1)				; we are only interested in the MSB now
-		ld		d, 5					; we want to extract 5 bits
-		ld		a, 3					; starting at position bit 3
-		call	F_KRN_BITEXTRACT
-		ld		(buffer_pgm + 2), a		; store hour value in buffer_pgm for later
-		; extract minute part (mmm) from MSB 0x17
-		ld		e, (iy + 1)				; we are only interested in the MSB now
-		ld		d, 3					; we want to extract 3 bits
-		ld		a, 0					; starting at position bit 0
-		call	F_KRN_BITEXTRACT
-		ld		(buffer_pgm + 3), a		; store minute part value in buffer_pgm for later
-		ld		hl, buffer_pgm + 3		; get rid
-		sla		(hl)					;   of the
-		sla		(hl)					;   unwanted
-		sla		(hl)					;   bits
-		; extract minute part (mmm) from LSB 0x16
-		ld		e, (iy)					; we are only interested in the MSB now
-		ld		d, 3					; we want to extract 3 bits
-		ld		a, 5					; starting at position bit 5
-		call	F_KRN_BITEXTRACT
-		ld		b, a					; store minute part value in B for later
-		; combine both minutes parts
-		ld		a, (buffer_pgm + 3)
-		or		b
-		ld		(buffer_pgm + 3), a		; store minute value in buffer_pgm for later
-		; print hour and  ':' separator
-		ld		a, (buffer_pgm + 2)
-		ld		h, 0
-		ld		l, a
-		call	F_KRN_BIN2BCD6
-		ex		de, hl
-		ld		de, buffer_pgm + 4
-		call	F_KRN_BCD2ASCII
-		ld		iy, buffer_pgm + 4
-		ld		a, (iy + 4)
-		call	F_BIOS_CONOUT
-		ld		a, (iy + 5)
-		call	F_BIOS_CONOUT
-		ld		a, TIMESEP
- 		call	F_BIOS_CONOUT
-		; print minutes
-		ld		a, (buffer_pgm + 3)
-		ld		h, 0
-		ld		l, a
-		call	F_KRN_BIN2BCD6
-		ex		de, hl
-		ld		de, buffer_pgm + 4
-		call	F_KRN_BCD2ASCII
-		ld		iy, buffer_pgm + 4
-		ld		a, (iy + 4)
-		call	F_BIOS_CONOUT
-		ld		a, (iy + 5)
-		call	F_BIOS_CONOUT
-		; print 2 spaces to separate
-		ld		a, SPACE
-		call	F_BIOS_CONOUT
-		ld		a, SPACE
-		call	F_BIOS_CONOUT
-		; 0x18	2 bytes		Date modified
-		;		<------- 0x19 --------> <------- 0x18 -------->
-		;		07 06 05 04 03 02 01 00 07 06 05 04 03 02 01 00
-		;		y  y  y  y  y  y  y  m  m  m  m  d  d  d  d  d
-		;	yyyyyyy = binary year offset from 1980 (0-119), representing the years 1980 to 2099
-		;	mmmm = binary month number (1-12)
-		; 	ddddd = indicates the binary day number (1-31)
-		; extract year (yyyyyyy) from MSB 0x19
-		ld		iy, (buffer_pgm)		; IY = first byte of the address where the entry is located
-		ld		bc, 18h					; offset for Date modified
-		add		iy, bc					; IY += offset
- 		ld		e, (iy + 1)				; we are only interested in the MSB now
- 		ld		d, 7					; we want to extract 7 bits
-		ld		a, 1					; starting at position bit 1
-		call	F_KRN_BITEXTRACT
- 		ld		(buffer_pgm + 2), a		; store year value in buffer_pgm for later
-
- 		; extract month part (mmm) from LSB 0x18
- 		ld		e, (iy)					; we are only interested in the LSB now
- 		ld		d, 3					; we want to extract 3 bits
- 		ld		a, 5					; starting at position bit 5
- 		call	F_KRN_BITEXTRACT
- 		ld		(buffer_pgm + 3), a		; store month part in buffer_pgm for later
- 		; extract month part (m) from MSB 0x19
- 		ld		e, (iy + 1)				; we are only interested in the MSB now
-		ld		d, 1					; we want to extract last bit
-		ld		a, 0					; starting at position bit 0
-		call	F_KRN_BITEXTRACT
- 		cp		1						; was the bit set?
-		jp		z, setit				; yes, then set the 3th bit on the extracted month part too
-		ld		hl, (buffer_pgm + 3) 
-		res		3, (hl)					; no, then reset the 3th bit on the extracted month part (mmm)
-		jp		extrday
-setit:
-		ld		hl, (buffer_pgm + 3) 
-		set		3, (hl)					; set the 3th bit on the extracted month part (mmm)
- 		; extract day (ddddd) from LSB 0x18
-extrday:	
- 		ld		e, (iy)					; we are only interested in the LSB now
- 		ld		d, 5					; we want to extract 5 bits
- 		ld		a, 0					; starting at position bit 0
- 		call	F_KRN_BITEXTRACT
- 		ld		(buffer_pgm + 4), a
- 		; print day and  '/' separator
-		ld		h, 0
-		ld		l, a
-		call	F_KRN_BIN2BCD6
-		ex		de, hl
-		ld		de, buffer_pgm + 5
-		call	F_KRN_BCD2ASCII
-		ld		iy, buffer_pgm + 5
-		ld		a, (iy + 4)
-		call	F_BIOS_CONOUT
-		ld		a, (iy + 5)
-		call	F_BIOS_CONOUT
-		ld		a, DATESEP
- 		call	F_BIOS_CONOUT
-		; print month and '/' separator
-		ld		a, (buffer_pgm + 3)
-		ld		h, 0
-		ld		l, a
-		call	F_KRN_BIN2BCD6
-		ex		de, hl
-		ld		de, buffer_pgm + 5
-		call	F_KRN_BCD2ASCII
-		ld		iy, buffer_pgm + 5
-		ld		a, (iy + 4)
-		call	F_BIOS_CONOUT
-		ld		a, (iy + 5)
-		call	F_BIOS_CONOUT
-		ld		a, DATESEP
- 		call	F_BIOS_CONOUT
-		; print year
-		ld		a, (buffer_pgm + 2)
-		ld		h, 0
-		ld		l, a
-		ld		bc, 1980				; year is the number of years since 1980
-		add		hl, bc
-		call	F_KRN_BIN2BCD6
-		ex		de, hl
-		ld		de, buffer_pgm + 5
-		call	F_KRN_BCD2ASCII
-		ld		iy, buffer_pgm + 5
-		ld		a, (iy + 2)
-		call	F_BIOS_CONOUT
-		ld		a, (iy + 3)
-		call	F_BIOS_CONOUT
-		ld		a, (iy + 4)
-		call	F_BIOS_CONOUT
-		ld		a, (iy + 5)
-		call	F_BIOS_CONOUT
-		; print 2 spaces to separate
-		ld		a, SPACE
-		call	F_BIOS_CONOUT
-		ld		a, SPACE
-		call	F_BIOS_CONOUT
-
 		; 0x1a	2 bytes		First cluster (low word)
-		ld		iy, (buffer_pgm)		; IY = first byte of the address where the entry is located
-		ld		bc, 1ah					; offset for First cluster (low word)
-		add		iy, bc					; IY += offset
-		ld		h, (iy + 1)				; MSB
-		ld		l, (iy)					; LSB
-		call	F_KRN_PRN_WORD			; print it
+		ld		ix, cur_file_1stcluster
+		ld		a, (ix + 1)
+		call F_KRN_PRN_BYTE
+		ld		a, (ix)
+		call F_KRN_PRN_BYTE
 
 		; print 5 spaces to separate
 		ld		a, SPACE
@@ -557,14 +373,12 @@ extrday:
 		; File size is 4 bytes, but in Z80 computers the max. addressable 
 		; memory is 2 bytes (FFFF = 65536 = 64 KB). Therefore we will only
 		; use 2 bytes as we don't expect files to be bigger than that
-		ld		a, (file_attributes)
+		ld		a, (cur_file_attribs)
 		bit		4, a					; Is it a subdirectory?
-		jp		nz, printdirlabel	; yes, print <DIR> instead of file size
+		jp		nz, printdirlabel		; yes, print <DIR> instead of file size
 										; no, print file size
 		; file size is in Hexadecimal
-		ld		iy, (buffer_pgm)		; IY = first byte of the address where the entry is located
-		ld		bc, 1ch					; offset for First cluster (low word)
-		add		iy, bc					; IY += offset
+		ld		iy, cur_file_size		; IY = first byte of the address where the entry is located
 		ld		e, (iy)					; D = MSB
 		ld		d, (iy + 1)				; E = LSB
 		ex		de, hl					; H = 1st byte (LSB), L = 2nd byte (LSB)
@@ -586,12 +400,113 @@ extrday:
 		call	F_BIOS_CONOUT
 		ld		a, (iy + 5)
 		call	F_BIOS_CONOUT
-		jp		printdirend			; nothing else to do for this entry
+		jp		nextfiledata
 printdirlabel:
 		; skip the 4 bytes of file size that were not read
 		ld		hl, msg_dirlabel
 		call	F_KRN_WRSTR
-printdirend:
+		ld		a, SPACE
+		call	F_BIOS_CONOUT
+nextfiledata:
+		; print 2 spaces to separate
+		ld		a, SPACE
+		call	F_BIOS_CONOUT
+		ld		a, SPACE
+		call	F_BIOS_CONOUT
+
+		; 0x16	2 bytes		Time modified
+		ld		hl, (cur_file_timemod)
+		call	F_KRN_F16_GETHHMM
+		; print hour and  ':' separator
+		ld		a, (cur_file_timemod_hh)
+		ld		h, 0
+		ld		l, a
+		call	F_KRN_BIN2BCD6
+		ex		de, hl
+		ld		de, buffer_pgm + 4
+		call	F_KRN_BCD2ASCII
+		ld		iy, buffer_pgm + 4
+		ld		a, (iy + 4)
+		call	F_BIOS_CONOUT
+		ld		a, (iy + 5)
+		call	F_BIOS_CONOUT
+		ld		a, TIMESEP
+ 		call	F_BIOS_CONOUT
+		; print minutes
+		ld		a, (cur_file_timemod_mm)
+		ld		h, 0
+		ld		l, a
+		call	F_KRN_BIN2BCD6
+		ex		de, hl
+		ld		de, buffer_pgm + 4
+		call	F_KRN_BCD2ASCII
+		ld		iy, buffer_pgm + 4
+		ld		a, (iy + 4)
+		call	F_BIOS_CONOUT
+		ld		a, (iy + 5)
+		call	F_BIOS_CONOUT
+		; print 2 spaces to separate
+		ld		a, SPACE
+		call	F_BIOS_CONOUT
+		ld		a, SPACE
+		call	F_BIOS_CONOUT
+		
+		; 0x18	2 bytes		Date modified
+		ld		hl, (cur_file_datemod)
+		call	F_KRN_F16_GETDDMMYYYY
+ 		; print day and  '/' separator
+		ld		a, (cur_file_datemod_dd)
+		ld		h, 0
+		ld		l, a
+		call	F_KRN_BIN2BCD6
+		ex		de, hl
+		ld		de, buffer_pgm + 5
+		call	F_KRN_BCD2ASCII
+		ld		iy, buffer_pgm + 5
+		ld		a, (iy + 4)
+		call	F_BIOS_CONOUT
+		ld		a, (iy + 5)
+		call	F_BIOS_CONOUT
+		ld		a, DATESEP
+ 		call	F_BIOS_CONOUT
+		; print month and '/' separator
+		ld		a, (cur_file_datemod_mm)
+		ld		h, 0
+		ld		l, a
+		call	F_KRN_BIN2BCD6
+		ex		de, hl
+		ld		de, buffer_pgm + 5
+		call	F_KRN_BCD2ASCII
+		ld		iy, buffer_pgm + 5
+		ld		a, (iy + 4)
+		call	F_BIOS_CONOUT
+		ld		a, (iy + 5)
+		call	F_BIOS_CONOUT
+		ld		a, DATESEP
+ 		call	F_BIOS_CONOUT
+		; print year
+ 		ld		a, (cur_file_datemod_yyyy)
+ 		ld		l, a
+		ld		a, (cur_file_datemod_yyyy + 1)
+ 		ld		h, a
+		call	F_KRN_BIN2BCD6
+		ex		de, hl
+		ld		de, buffer_pgm + 5
+		call	F_KRN_BCD2ASCII
+		ld		iy, buffer_pgm + 5
+		ld		a, (iy + 2)
+		call	F_BIOS_CONOUT
+		ld		a, (iy + 3)
+		call	F_BIOS_CONOUT
+		ld		a, (iy + 4)
+		call	F_BIOS_CONOUT
+		ld		a, (iy + 5)
+		call	F_BIOS_CONOUT
+		; print 2 spaces to separate
+		ld		a, SPACE
+		call	F_BIOS_CONOUT
+		ld		a, SPACE
+		call	F_BIOS_CONOUT
 		ld		b, 1
 		call 	F_KRN_EMPTYLINES
 		ret
@@ -1031,7 +946,7 @@ msg_cf_ld:
 		.BYTE	CR, LF
 		.BYTE	"Directory contents", CR, LF
 		.BYTE	"------------------------------------------------", CR, LF
-		.BYTE	"File          Time   Date        Cluster  Size", CR, LF
+		.BYTE	"File          Cluster  Size    Time   Date", CR, LF
 		.BYTE	"------------------------------------------------", CR, LF, 0
 msg_dirlabel:
 		.BYTE	"<DIR>", 0

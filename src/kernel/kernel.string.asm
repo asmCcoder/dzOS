@@ -214,8 +214,8 @@ F_KRN_STRCPY:			.EXPORT		F_KRN_STRCPY
 ; IN <= HL pointer to start of string 1
 ;		DE pointer to start of string 2
 ;		B number of characters to copy
-		ld		a, (de)					; 1 character from original string
-		ld		(hl), a					; copy it to destination string
+		ld		a, (hl)					; 1 character from original string
+		ld		(de), a					; copy it to destination string
 		inc		de						; pointer to next destination character
 		inc		hl						; pointer to next original character
 		djnz	F_KRN_STRCPY			; all characters copied (i.e. B=0)? No, continue copying

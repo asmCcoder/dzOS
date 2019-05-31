@@ -488,6 +488,181 @@ allok:
 	ld		de, (buffer_pgm + 6)	; restore load address
 	or		1						; reset Z flag
 	ret
+;------------------------------------------------------------------------------
+F_KRN_F16_GETENTRYDATA:	.EXPORT		F_KRN_F16_GETENTRYDATA
+; Gets data referring to a directory entry and stores it in sysvars
+; IN <= buffer_pgm = first byte of the address where the entry is located
+; OUT => cur_file_name			Name 			8 bytes
+;		 cur_file_extension		Extension		3 bytes
+;		 cur_file_attribs		Attributes		1 byte
+;		 cur_file_timemod		Time Modif		2 bytes
+;		 cur_file_datemod		Date Modif		2 bytes
+;		 cur_file_1stcluster	First Cluster	2 bytes
+;		 cur_file_size			File size		4 bytes
+	; 0x00 	8 bytes 	File name
+	ld		hl, (buffer_pgm)
+	ld		de, cur_file_name
+	ld		b, 8
+	call	F_KRN_STRCPY
+	; 0x08 	3 bytes 	File extension
+	ld		hl, (buffer_pgm)
+	ld		bc, $8
+	add		hl, bc
+	ld		de, cur_file_extension
+	ld		b, 3
+	call	F_KRN_STRCPY
+	; 0x0b 	1 byte 		File attributes
+	;	Bit 0	0x01	Indicates that the file is read only.
+	;	Bit 1	0x02	Indicates a hidden file. Such files can be displayed if it is really required.
+	;	Bit 2	0x04	Indicates a system file. These are hidden as well.
+	;	Bit 3	0x08	Indicates a special entry containing the disk's volume label, instead of describing a file. This kind of entry appears only in the root directory.
+	;	Bit 4	0x10	The entry describes a subdirectory.
+	;	Bit 5	0x20	This is the archive flag. This can be set and cleared by the programmer or user, but is always set when the file is modified. It is used by backup programs.
+	;	Bit 6	Not used; must be set to 0.
+	; 	Bit 7	Not used; must be set to 0.
+	ld		hl, (buffer_pgm)
+	ld		bc, $b
+	add		hl, bc
+	ld		a, (hl)
+	ld		(cur_file_attribs), a
+
+	; 0x0c 	1 bytes 	Reserved
+	; 0x0d	1 byte		Created time refinement in 10ms (0-199)
+	; 0x0e 	2 bytes 	Time created
+	; 0x10 	2 bytes 	Date created
+	; 0x12	2 bytes		Last access date
+	; 0x14	2 bytes		First cluster (high word)
+
+	; 0x16	2 bytes		Time modified
+	ld		hl, (buffer_pgm)
+	ld		bc, $16
+	add		hl, bc
+	ld		de, cur_file_timemod
+	ld		b, 2
+	call	F_KRN_STRCPY
+	; 0x18	2 bytes		Date modified
+	ld		hl, (buffer_pgm)
+	ld		bc, $18
+	add		hl, bc
+	ld		de, cur_file_datemod
+	ld		b, 2
+	call	F_KRN_STRCPY
+	; 0x1a	2 bytes		First cluster (low word)
+	ld		hl, (buffer_pgm)
+	ld		bc, $1a
+	add		hl, bc
+	ld		de, cur_file_1stcluster
+	ld		b, 2
+	call	F_KRN_STRCPY
+	; 0x1c 	4 bytes 	File size in bytes
+	ld		hl, (buffer_pgm)
+	ld		bc, $1c
+	add		hl, bc
+	ld		de, cur_file_size
+	ld		b, 4
+	call	F_KRN_STRCPY
+	ret
+;------------------------------------------------------------------------------
+F_KRN_F16_GETHHMM:		.EXPORT		F_KRN_F16_GETHHMM
+; Gets the hour (HH) and the minutes (MM) from 2 bytes that store a time
+; IN <= H = MSB of the stored time
+;		L = LSB of the stored time
+; OUT => sysvars.cur_file_timemod_hh = byte representing the hour in Hexadecimal (0-23)
+;		 sysvars.cur_file_timemod_mm = byte representing the minutes in Hexadecimal (0-59)
+; 		|---- MSB ----| |---- LSB ----|
+;		7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0
+;		h h h h h m m m m m m x x x x x
+;	hhhhh = binary number of hours (0-23)
+;	mmmmmm = binary number of minutes (0-59)
+;	xxxxx = binary number of two-second periods (0-29), representing seconds 0 to 58.
+		; extract hour (hhhhh) from MSB
+ 		ld		e, h					; we are only interested in the MSB now
+		ld		d, 5					; we want to extract 5 bits
+		ld		a, 3					; starting at position bit 3
+		push	hl						; backup HL. Stored time
+		call	F_KRN_BITEXTRACT
+		ld		(cur_file_timemod_hh), a	; store hour value in sysvars
+		; extract minute part (mmm) from MSB
+		pop		hl						; restore HL. Stored time
+		ld		e, h					; we are only interested in the MSB now
+		ld		d, 3					; we want to extract 3 bits
+		ld		a, 0					; starting at position bit 0
+		push	hl						; backup HL. Stored time
+		call	F_KRN_BITEXTRACT
+		ld		(cur_file_timemod_mm), a	; store minute part value in sysvars
+		ld		hl, cur_file_timemod_mm	; get rid
+		sla		(hl)					;   of the
+		sla		(hl)					;   unwanted
+		sla		(hl)					;   bits
+		; extract minute part (mmm) from LSB
+		pop		hl						; restore HL. Stored time
+		ld		e, l					; we are only interested in the LSB now
+		ld		d, 3					; we want to extract 3 bits
+		ld		a, 5					; starting at position bit 5
+		call	F_KRN_BITEXTRACT
+		ld		b, a					; store minute part value in B for later
+		; combine both minutes parts
+		ld		a, (cur_file_timemod_mm)
+		or		b
+		ld		(cur_file_timemod_mm), a	; store minute value in sysvars
+		ret
+;------------------------------------------------------------------------------
+F_KRN_F16_GETDDMMYYYY:		.EXPORT		F_KRN_F16_GETDDMMYYYY
+; Gets the day (DD), month (MM) and year (YYYY) from 2 bytes that store a date
+; IN <= H = MSB of the stored date
+;		L = LSB of the stored date
+; OUT => sysvars.cur_file_timemod_dd = byte representing the day in Hexadecimal (1-31)
+;		 sysvars.cur_file_timemod_mm = byte representing the month in Hexadecimal (1-12)
+;		 sysvars.cur_file_timemod_yyyy = 2 bytes representing the year in Hexadecimal
+; 		|---- MSB ----| |---- LSB ----|
+;		7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0
+;		y y y y y y y m m m m d d d d d
+;	yyyyyyy = binary year offset from 1980 (0-119), representing the years 1980 to 2099
+;	mmmm = binary month number (1-12)
+; 	ddddd = indicates the binary day number (1-31)
+; extract year (yyyyyyy) from MSB 0x19
+ 		ld		e, h					; we are only interested in the MSB now
+ 		ld		d, 7					; we want to extract 7 bits
+		ld		a, 1					; starting at position bit 1
+		push	hl						; backup HL. Stored date
+		call	F_KRN_BITEXTRACT
+		ld		h, 0
+		ld		l, a
+		ld		bc, 1980				; year is the number of years since 1980
+		add		hl, bc
+		ld		(cur_file_datemod_yyyy), hl		; store year value in sysvars
+ 		; extract month part (mmm) from LSB 0x18
+		pop		hl						; restore HL. Stored date
+ 		ld		e, l					; we are only interested in the LSB now
+ 		ld		d, 3					; we want to extract 3 bits
+ 		ld		a, 5					; starting at position bit 5
+		push	hl						; backup HL. Stored date
+ 		call	F_KRN_BITEXTRACT
+ 		ld		(cur_file_datemod_mm), a	; store month part in sysvars
+ 		; extract month part (m) from MSB 0x19
+		pop		hl						; restore HL. Stored date
+ 		ld		e, h					; we are only interested in the MSB now
+		ld		d, 1					; we want to extract last bit
+		ld		a, 0					; starting at position bit 0
+		push	hl						; backup HL. Stored date
+		call	F_KRN_BITEXTRACT
+ 		cp		1						; was the bit set?
+		jp		z, setit				; yes, then set the 3th bit on the extracted month part too
+		ld		hl, (cur_file_datemod_mm) 
+		res		3, (hl)					; no, then reset the 3th bit on the extracted month part (mmm)
+		jp		extrday
+setit:
+		ld		hl, (cur_file_datemod_mm) 
+		set		3, (hl)					; set the 3th bit on the extracted month part (mmm)
+ 		; extract day (ddddd) from LSB 0x18
+extrday:
+		pop		hl						; restore HL. Stored date
+ 		ld		e, l					; we are only interested in the LSB now
+ 		ld		d, 5					; we want to extract 5 bits
+ 		ld		a, 0					; starting at position bit 0
+ 		call	F_KRN_BITEXTRACT
+ 		ld		(cur_file_datemod_dd), a	; store day in sysvars
+		ret
 ;==============================================================================
 ; Messages
 ;==============================================================================

@@ -10,3 +10,7 @@ dzOS.2019.05.26.1.bin
 
 dzOS.2019.05.27.7.bin
 	ld shows file size in decimal notation
+
+dzOS.2019.05.31.40.bin
+	ld shows last modified time and date
+	

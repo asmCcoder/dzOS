@@ -39,53 +39,90 @@
 ;==============================================================================
 ;		.ORG	SYSVARS
 		.ORG	ACIA_BUFFERS_END
-buffer_cmd:			.EXPORT			buffer_cmd
+buffer_cmd:				.EXPORT		buffer_cmd
 				.FILL	16, 0
 
-buffer_parm1:		.EXPORT			buffer_parm1
+buffer_parm1:			.EXPORT		buffer_parm1
 				.FILL	16, 0
 
-buffer_parm1_val:	.EXPORT			buffer_parm1_val
+buffer_parm1_val:		.EXPORT		buffer_parm1_val
 				.FILL	16, 0
 
-buffer_parm2:		.EXPORT			buffer_parm2
+buffer_parm2:			.EXPORT		buffer_parm2
 				.FILL	16, 0
 
-buffer_parm2_val:	.EXPORT			buffer_parm2_val
+buffer_parm2_val:		.EXPORT		buffer_parm2_val
 				.FILL	16, 0
 
-buffer_pgm:			.EXPORT			buffer_pgm
+buffer_pgm:				.EXPORT		buffer_pgm
 				.FILL	32, 0			; general buffer from programs
 
-secs_per_clus:		.EXPORT			secs_per_clus
+secs_per_clus:			.EXPORT		secs_per_clus
 				.BYTE	0
 
-secs_per_fat:		.EXPORT			secs_per_fat
+secs_per_fat:			.EXPORT		secs_per_fat
 				.BYTE	0, 0
 
-num_fats:			.EXPORT			num_fats
+num_fats:				.EXPORT		num_fats
 				.BYTE 	0
 
-reserv_secs:		.EXPORT			reserv_secs
+reserv_secs:			.EXPORT		reserv_secs
 				.BYTE 	0, 0
 
-clus2secnum:		.EXPORT			clus2secnum
+clus2secnum:			.EXPORT		clus2secnum
 				.BYTE 	0, 0
 
-root_dir_start:		.EXPORT			root_dir_start
+root_dir_start:			.EXPORT		root_dir_start
 				.BYTE 	0, 0
 
-root_dir_sectors:	.EXPORT			root_dir_sectors
+root_dir_sectors:		.EXPORT		root_dir_sectors
 				.BYTE	0, 0
 
-cur_dir_start:		.EXPORT			cur_dir_start
+cur_dir_start:			.EXPORT		cur_dir_start
 				.BYTE 	0, 0
 
-file_attributes:	.EXPORT			file_attributes
+file_attributes:		.EXPORT		file_attributes
 				.BYTE 	0
 
-cur_sector:		.EXPORT			cur_sector
+cur_sector:				.EXPORT		cur_sector
 				.BYTE 	0, 0
+
+cur_file_name			.EXPORT		cur_file_name
+				.FILL	8, 0	
+
+cur_file_extension		.EXPORT		cur_file_extension
+				.BYTE	0, 0, 0
+
+cur_file_attribs		.EXPORT		cur_file_attribs
+				.BYTE	0
+
+cur_file_timemod		.EXPORT		cur_file_timemod
+				.BYTE	0, 0
+
+cur_file_timemod_hh		.EXPORT		cur_file_timemod_hh
+				.BYTE	0
+
+cur_file_timemod_mm		.EXPORT		cur_file_timemod_mm
+				.BYTE	0
+
+cur_file_datemod		.EXPORT		cur_file_datemod
+				.BYTE	0, 0
+
+cur_file_datemod_dd		.EXPORT		cur_file_datemod_dd
+				.BYTE	0
+
+cur_file_datemod_mm		.EXPORT		cur_file_datemod_mm
+				.BYTE	0
+
+cur_file_datemod_yyyy	.EXPORT		cur_file_datemod_yyyy
+				.BYTE	0, 0
+
+cur_file_1stcluster		.EXPORT		cur_file_1stcluster
+				.BYTE	0, 0
+
+cur_file_size			.EXPORT		cur_file_size
+				.BYTE	0, 0, 0, 0
+
 
         .ORG	SYSVARS_END
 		        .BYTE	0
