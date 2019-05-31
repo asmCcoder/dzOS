@@ -74,9 +74,13 @@ F_KRN_F16_READBOOTSEC:	.EXPORT		F_KRN_F16_READBOOTSEC
 		; 0x010 = NumberFATs (1 byte)
 		ld		a, (CF_BUFFER_START + 10h)
 		ld		(num_fats), a
-		; 0x011 = RootEntries (2 bytes)
 		; root_dir_sectors = (32 bytes * RootEntries) / BytesPerSector
-		ld		hl, 32																	; >>>> ToDo - this is hardcoded! We need a DIV routine <<<<
+		ld		hl, (CF_BUFFER_START + 11h)	; 0x011 = RootEntries (2 bytes)
+		ld		a, 32						; 32 bytes
+		ex		de, hl						; DE = RootEntries
+		call	F_KRN_MULTIPLY816_SLOW		; HL = RootEntries * 32 bytes
+		ld		de, (CF_BUFFER_START + 0Bh)	; 0x00B = BytesPerSector (2 bytes)
+		call	F_KRN_UDIV16				; HL = (RootEntries * 32 bytes) / BytesPerSector
 		ld		(root_dir_sectors), hl
 		; 0x016 = SectorsPerFAT (2 bytes)
 		ld		hl, (CF_BUFFER_START + 16h)
