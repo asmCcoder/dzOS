@@ -86,7 +86,13 @@ F_KRN_F16_READBOOTSEC:	.EXPORT		F_KRN_F16_READBOOTSEC
 		ld		hl, (CF_BUFFER_START + 16h)
 		ld		(secs_per_fat), hl
 		; clus2secnum = reserv_secs + num_fats * secs_per_fat + root_dir_sectors
-		ld		hl, 529																	; >>>> ToDo - this is hardcoded! <<<<
+		ld		a, (num_fats)
+		ld		de, (secs_per_fat)
+		call	F_KRN_MULTIPLY816_SLOW		; HL = num_fats * secs_per_fat
+		ld		bc, (reserv_secs)
+		add		hl, bc						; HL = reserv_secs + num_fats * secs_per_fat
+		ld		bc, (root_dir_sectors)
+		add		hl, bc						; HL = reserv_secs + num_fats * secs_per_fat + root_dir_sectors
 		ld		(clus2secnum), hl
 		; 0x02B = Volume Label (11 bytes)
 		ld		hl, msg_vollabel
