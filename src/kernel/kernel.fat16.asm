@@ -377,16 +377,8 @@ F_KRN_F16_CLUS2SEC:		.EXPORT		F_KRN_F16_CLUS2SEC
 F_KRN_F16_GETFATCLUS:	.EXPORT		F_KRN_F16_GETFATCLUS
 ; Get list of all the clusters of a file from FAT
 ; IN <= HL First cluster number
-; OUT => list of clusters (2 bytes each) stored in sysvars.buffer_pgm
-		ld		ix, 1					; counter. How many clusters for a the file
-		; each entry in the FAT is 2 bytes, therefore in each Sector
-		; of 512 bytes, can be 256 allocations
-		; We check if HL is greater. Right now dzOS only supports 256 Clusters
+; OUT => list of clusters (2 bytes each) stored in sysvars.cur_file_clusterlist
 		push	hl						; backup HL. First cluster number
-;		ld		de, 256					; max. number of clusters allowed
-;		sbc		hl, de					; is it more than 256?
-;		jp		m, getfatend			; yes, exit routine
-										; no, continue
 		; FAT sector = sysvars.reserv_secs
 		ld		hl, (reserv_secs)		; HL = sysvars.reserv_secs
 		call	F_KRN_F16_SEC2BUFFER	; read FAT into RAM buffer
@@ -395,9 +387,7 @@ F_KRN_F16_GETFATCLUS:	.EXPORT		F_KRN_F16_GETFATCLUS
 		add		hl, hl					; the byte to read is at CF_BUFFER_START + HL * 2
 		ld		de, CF_BUFFER_START
 		add		hl, de
-		ld		de, buffer_pgm			; pointer to sysvars.buffer_pgm (store number of clusters)
-		inc		de						; pointer to sysvars.buffer_pgm + 1 (store cluster counter)
-		inc		de						; pointer to sysvars.buffer_pgm + 2 (store cluster list)
+		ld		de, cur_file_clusterlist; pointer to sysvars.cur_file_clusterlist
 getfatloop:
 		; store bytes pair in sysvars.buffer_pgm
 		ld		a, (hl)
@@ -407,16 +397,10 @@ getfatloop:
 		ld		a, (hl)
 		ld		(de), a					; store second byte
 		cp		$FF						; if A = FF, then this was last cluster
-		jp		z, getfatend			; yes, exit routine
+		ret		z						; yes, exit routine
 		inc		de						; no, pointer to next pair of bytes in sysvars.buffer_pgm 
 		inc		hl						; pointer to next pair of bytes in CF_BUFFER_START
-		inc		ix						; counter. How many clusters for a the file
 		jp		getfatloop				; get next pair of bytes
-getfatend:
-		ld		(buffer_pgm), ix		;store number of clusters
-		ld		ix, buffer_pgm
-		ld		(ix + 1), 1				;store cluster counter
-		ret
 ;------------------------------------------------------------------------------
 F_KRN_F16_LOADEXE2RAM:	.EXPORT		F_KRN_F16_LOADEXE2RAM
 ; Load an executable file into RAM, so it can be run
@@ -425,21 +409,28 @@ F_KRN_F16_LOADEXE2RAM:	.EXPORT		F_KRN_F16_LOADEXE2RAM
 ;		 DE = load address
 ;		 All bytes of the executable file are loaded into 
 ;			RAM at the address location found in the file header
-; buffer_pgm usage
-;		buffer_pgm = (2 bytes) 1st Cluster, 1st Sector number
+; sysvars.buffer_pgm usage:
+;		buffer_pgm + 0 = (2 bytes) original load address from header
 ;		buffer_pgm + 2 = (2 bytes) destination address in RAM
-;		buffer_pgm + 4 = (2 bytes) number of bytes copied
-;		buffer_pgm + 6 = (2 bytes) original load address
+;		buffer_pgm + 4 = (1 byte) cluster counter within cur_file_clusterlist
+;		buffer_pgm + 5 = (1 byte) remaining sectors to be read within a cluster
+;		buffer_pgm + 6 = (2 bytes) number of bytes to copy from sector (496 for 1st sector of 1st cluster, 512 for the rest)
+	ld		a, 0
+	ld		(buffer_pgm + 4), a		; remaining sectors to be read within a cluster
+	ld		a, (secs_per_clus)		; counter. Remaining sectors
+	ld		(buffer_pgm + 5), a		; remaining sectors to be read within a cluster
+	ld		bc, 496
+	ld		(buffer_pgm + 6), bc	; number of bytes to copy from sector
 ; Header:
 ; 	first 4 bytes = string dzOS (64, 7A, 4F, 53)
-; 	next 2 bytes are the hexadecimal values of the start address in little-endian format
+; 	next 2 bytes are the hexadecimal values of the load address in little-endian format
 ;	rest of the bytes are nullified with 0x00 and not used at the moment
-
-	ld		bc, 511					; copy entire sector (512 bytes) 512 - 1 for the 0 byte
-	ld		(buffer_pgm + 4), bc	; backup BC. Number of bytes copied
-	; Read FAT and get list of clusters
+	push	de						; backup DE. First cluster number
+	ex		de, hl					; HL = First cluster number
+	call	F_KRN_F16_GETFATCLUS	; read clusters from FAT into sysvars.cur_file_clusterlist
+	pop		de						; restore first cluster number
 	call	F_KRN_F16_CLUS2SEC		; convert cluster number to sector number
-	ld		(buffer_pgm), hl		; backup HL. 1st Sector number
+	ld		(cur_sector), hl		; backup HL. 1st Sector number
 	call	F_KRN_F16_SEC2BUFFER	; load sector to buffer
 	; Check header for "dzOS"
 	ld		ix, CF_BUFFER_START
@@ -456,46 +447,73 @@ F_KRN_F16_LOADEXE2RAM:	.EXPORT		F_KRN_F16_LOADEXE2RAM
 	cp		'S'						; yes, 4th byte = 'S'?
 	jp		nz, errorheader			; no, print error and exit routine
 									; yes, continue
-	
-	; copy 1st sector of 1st cluster
-	ld		de, (CF_BUFFER_START + 4)	; pointer to load address
-	ld		(buffer_pgm + 6), de	; backup DE. Load address
-	ld		hl, CF_BUFFER_START + 16	; pointer to first executable byte
-	ld		bc, 495					; 512 - 16 = 496 bytes will be copied
-	ldir							; copy n bytes from HL to DE
-	ld		(buffer_pgm + 2), de	; backup DE. destination address
-	; copy remaining sectors of 1st cluster
-	ld		a, (secs_per_clus)		; counter. Remaining sectors
-loadloop:
-	dec		a						; 1st sector already loaded
-	ld		hl, (buffer_pgm)		; restore sector number
-	inc		hl						; next sector
-	ld		(buffer_pgm), hl		; backup HL. Sector number
-	call	F_KRN_F16_SEC2BUFFER	; load sector to buffer
-	ld		hl, (buffer_pgm + 2)	; restore destination address
-	ld		bc, (buffer_pgm + 4)	; copy entire sector (512 bytes) 512 - 1 for the 0 byte
-	ex		de, hl					; DE = destination address + number of bytes last copied
-	inc		de						; +1 to not overwrite last byte
-	ld		hl, CF_BUFFER_START		; pointer to first executable byte
-	ldir							; copy n bytes from HL to DE
-	ld		(buffer_pgm + 2), de	; backup DE. destination address
-	cp		0						; did we copy all sectors of the cluster?
-	jp		nz, loadloop			; no, copy another sector
-	jp		allok					; yes, set return parameters and exit routine
 
-	; for each cluster
-	;	for each sector
-	;		load bytes into RAM
-
-	; >>>> ToDo - This only loads sectors of first cluster <<<<
 	; >>>> ToDo - Should only load number of bytes equal to file size. Otherwise is loading rubbish <<<<
+
+	
+	; Header was correct
+	; copy 1st sector of 1st cluster (only 496 bytes, because header is 16)
+	ld		de, (CF_BUFFER_START + 4)	; pointer to load address
+	ld		(buffer_pgm), de		; store original load address from header
+	ld		hl, CF_BUFFER_START + 16	; pointer to first executable byte
+loadsec1:
+	ld		bc, (buffer_pgm + 6)	; number of bytes to copy from sector
+	ldir							; copy n bytes from HL to DE
+	ld		(buffer_pgm + 2), de	; backup next load address
+	ld		bc, 512					; from now on, 512 bytes (entire sector) will be copied
+	ld		(buffer_pgm + 6), bc	; number of bytes to copy from sector
+	
+	; 1st sector of 1st cluster copied. Lets copy the rest
+loadsecsloop:
+	ld		a, (buffer_pgm + 5)		; remaining sectors to be read within a cluster
+	dec		a						; 1st sector already loaded
+	cp		0						; did we copy all sectors of the cluster?
+	jp		z, nextcluster			; yes, load next cluster
+									; no, continue
+	ld		(buffer_pgm + 5), a		; remaining sectors to be read within a cluster
+	ld		hl, (cur_sector)
+	inc		hl						; next sector
+	ld		(cur_sector), hl		; backup sector number
+	call	F_KRN_F16_SEC2BUFFER	; load sector to buffer
+	ld		de, (buffer_pgm + 2)	; restore next load address
+	ld		hl, CF_BUFFER_START		; pointer to first executable byte
+	ld		bc, (buffer_pgm + 6)	; number of bytes to copy from sector
+	ldir							; copy n bytes from HL to DE
+	ld		(buffer_pgm + 2), de	; backup next load address
+	jp		loadsecsloop			; copy another sector
+nextcluster:
+	; get next cluster from sysvars.cur_file_clusterlist
+	ld		hl, buffer_pgm + 4		; HL = pointer to cluster counter within cur_file_clusterlist
+	ld		d, 0					; clear D. cluster counter is only 1 byte
+	ld		e, (hl) 				; E = cluster counter within cur_file_clusterlist
+	ld		hl, cur_file_clusterlist
+	add		hl, de					; HL = cur_file_clusterlist + cluster counter
+	ld		a, (hl)					; get 1st byte of next cluster number pair
+	ld		e, a					; DE = next cluster number (1st byte)
+	inc		hl						; point to 2nd byte of next cluster number pair
+	ld		a, (hl)					; get 2nd byte of next cluster number pair
+	ld		d, a					; DE = next cluster number (2nd byte)
+	cp		$FF						; is next cluster number $FF?
+	jp		z, alldone				; yes, then all cluster were read already
+									; no, continue
+	ld		hl, buffer_pgm + 4		; HL = pointer to cluster counter within cur_file_clusterlist
+	inc		(hl)					; increase counter to next cluster number
+	call	F_KRN_F16_CLUS2SEC		; convert cluster number to sector number
+	ld		(cur_sector), hl		; backup HL. Sector number
+	call	F_KRN_F16_SEC2BUFFER	; load sector to buffer
+	ld		a, (secs_per_clus)		; restore sectors
+	inc		a						; +1 because in the loop was discounting for 1st sector of 1st cluster
+	ld		(buffer_pgm + 5), a		;	per cluster counter
+	ld		de, (buffer_pgm + 2)	; restore next load address
+	ld		hl, CF_BUFFER_START		; pointer to first executable byte
+	jp		loadsec1
 errorheader:
 	ld		hl, error_4004
 	call	F_KRN_WRSTR
 	cp		a						; set Z flag
 	ret
-allok:
-	ld		de, (buffer_pgm + 6)	; restore load address
+alldone:
+	ld		de, (buffer_pgm)		; restore load address from header
 	or		1						; reset Z flag
 	ret
 ;------------------------------------------------------------------------------

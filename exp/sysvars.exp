@@ -18,7 +18,8 @@ cur_file_datemod_dd .EQU  $2357
 cur_file_datemod_mm .EQU  $2358
 cur_file_datemod_yyyy .EQU  $2359
 cur_file_1stcluster .EQU  $235b
-cur_file_size    .EQU  $235d
+cur_file_clusterlist .EQU  $235d
+cur_file_size    .EQU  $2368
 file_attributes  .EQU  $2342
 num_fats         .EQU  $2337
 reserv_secs      .EQU  $2338

@@ -120,6 +120,9 @@ cur_file_datemod_yyyy	.EXPORT		cur_file_datemod_yyyy
 cur_file_1stcluster		.EXPORT		cur_file_1stcluster
 				.BYTE	0, 0
 
+cur_file_clusterlist	.EXPORT		cur_file_clusterlist
+				.FILL	11, 0
+
 cur_file_size			.EXPORT		cur_file_size
 				.BYTE	0, 0, 0, 0
 
