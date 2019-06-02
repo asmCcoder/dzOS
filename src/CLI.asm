@@ -148,10 +148,6 @@ F_CLI_PARSECMD:
 		ld		de, _CMD_LF
 		call	search_cmd				; was the command that we were searching?
 		jp		z, CLI_CMD_LF			; yes, then execute the command
-		;search command "show file contents"
-		ld		de, _CMD_SF
-		call	search_cmd				; was the command that we were searching?
-		jp		z, CLI_CMD_SF			; yes, then execute the command
 ;		;search command "loadihex"
 ;		ld		de, _CMD_LOADIHEX
 ;		call	search_cmd				; was the command that we were searching?
@@ -516,10 +512,8 @@ nextfiledata:
 ;------------------------------------------------------------------------------
 ;	lf - Load a file into RAM
 ;------------------------------------------------------------------------------
-; First 16 bytes are the header and are not loaded into RAM
-		;	4 bytes must be string dzOS
-		;	next bytes for load address (where to load the bytes)
-		; Rest of the bytes are the executable code, which is loaded at load address
+; bytes of executable code are loaded at load address read from 
+; the file (bytes 03 and 04)
 CLI_CMD_LF:
 		call	check_param1
 		jp		nz, loadfile			; param1 specified? Yes, do the command
@@ -543,113 +537,10 @@ loadfile:
 	; DE contains the binary value for param1
 	; >>>> ToDO - What if user entered wrong cluster? <<<<
 		call	F_KRN_F16_LOADEXE2RAM
-		jp		z, lfend				; did LOADEXE2RAM return an error? Yes, exit routine
 		ld		hl, msg_exeloaded		; no, print load message
 		call	F_KRN_WRSTR
 		ex		de, hl					; HL = load address (returned by F_KRN_F16_LOADEXE2RAM)
 		call	F_KRN_PRN_WORD			; print load address
-lfend:
-		ret
-;------------------------------------------------------------------------------
-;	sf - Show the contents of a file
-;------------------------------------------------------------------------------
-CLI_CMD_SF:
-		call	check_param1
-		jp		nz, showfile			; param1 specified? Yes, do the command
-		ret								; no, exit routine
-showfile:
-		call	param1val_uppercase
-		ld		de, (buffer_parm1_val)
-		; parm1 is in ascii, we need to convert the values to hex
-		ld		a, (buffer_parm1_val)
-		ld		h, a
-		ld		a, (buffer_parm1_val + 1)
-		ld		l, a
-		call	F_KRN_ASCII2HEX
-		ld		d, a
-		ld		a, (buffer_parm1_val + 2)
-		ld		h, a
-		ld		a, (buffer_parm1_val + 3)
-		ld		l, a
-		call	F_KRN_ASCII2HEX
-		ld		e, a
-	; DE contains the binary value for param1
-	; >>>> ToDO - What if user entered wrong cluster? <<<<
-
-		; for current cluster
-		;	convert it to sector
-		;	read each sector of the cluster
-		;	print the 512 bytes to the screen
-		ex		de, hl					; move from DE to HL (HL = param1)
-		push	hl						; backup HL. param1 (cluster number)
-		call	F_KRN_F16_CLUS2SEC		; convert cluster number to sector number
-		call	F_KRN_F16_SEC2BUFFER	; load sector to buffer
-		; read FAT (into buffer_pgm) to know which are the clusters of the file
-		pop		hl						; restore HL. param1 (cluster number)
-		push	hl						; backup HL. param1 (cluster number)
-		call	F_KRN_F16_GETFATCLUS	; read clusters from FAT into sysvars.buffer_pgm
-		pop		hl						; restore HL. param1 (cluster number)
-		ld		b, 1
-		call 	F_KRN_EMPTYLINES
-		ld		a, (secs_per_clus)
-		push	af						; backup A. secs_per_clus
-		ex		de, hl					; DE = param1 (cluster number)
-getclussec:
-		call	F_KRN_F16_CLUS2SEC		; get the sector number of the cluster
-loadandprintsec:
-		push	hl						; backup HL. sector number
-		call	F_KRN_F16_SEC2BUFFER	; load sector to buffer
-
-		; print entire sector on screen
-		ld		hl, CF_BUFFER_START
-		; print first 256 bytes of the sector on screen
-		ld		b, 0
-		call	F_KRN_PRN_BYTES
-		jp		z, sfendpop				; was last character null? Yes, exit routine
-		; no, print remaining 256 bytes of the sector on screen
-		ld		b, 0
-		call	F_KRN_PRN_BYTES
-
-		pop		hl						; restore HL. sector number
-		pop		af						; restore A. secs_per_clus
-		dec		a						; 1 sector printed
-		cp		0						; all sectors of the cluster printed?
-		jp		z, nextclus				; yes, load next cluster
-		inc		hl						; no, print next sector of the cluster
-		push	af						; backup A. secs_per_clus
-		jp		loadandprintsec
-
-		; rest of clusters
-		; 	for each cluster in sysvars.buffer_pgm until cluster == FFFF
-		; 		convert it into sectors
-		;		print each byte of sector
-		; 	load sectors and print contents
-
-nextclus:
-		ld		ix, buffer_pgm			; pointer to cluster counter in sysvars.buffer_pgm
-		ld		a, (ix)					; how many cluster to print
-		add		a, a					; each cluster is 2 bytes, so duplicate the counter
-		cp		(ix + 1)				; all cluster printed?
-		jp		z, sfend				; yes, exit routine
-		ld		b, 0					; no continue
-		ld		c, (ix + 1)				; BC = counter of printed clusters
-		inc		bc						; counter + 1
-		ld		hl, buffer_pgm			; pointer to cluster counter in sysvars.buffer_pgm
-		add		hl, bc					; pointer to cluster counter + counter of printed clusters
-		ld		a, (hl)					; load LSB byte of cluster number
-		cp		$FF						; if A = FF, then this was last cluster
-		jp		z, sfend				; yes, exit routine
-										; no, continue
-		ld		e, (hl)					; DE = LSB first cluster in sysvars.buffer_pgm
-		inc		hl
-		ld		d, (hl)					; DE = MSB first cluster in sysvars.buffer_pgm
-		inc		(ix + 1)				; each cluster is 2 bytes
-		inc		(ix + 1)				; 	counter of printed clusters + 2
-		jp		getclussec				; print entire cluster (all sectors)
-sfendpop:
-		pop		hl
-		pop		af
-sfend:
 		ret
 ;------------------------------------------------------------------------------
 ;	cd - Changes current directory of a disk
@@ -939,7 +830,6 @@ msg_help:
 		.BYTE	"|             |                                   |                    |", CR, LF
 ;		.BYTE	"| cd          | Change Directory                  | cd mydocs          |", CR, LF
 		.BYTE	"| ld          | List Directory contents of a Disk | ld                 |", CR, LF
-		.BYTE	"| sf          | Show contents of a file           | sf 0007            |", CR, LF
 		.BYTE	"| lf          | Load file (Max. 496 bytes) to RAM | lf 0007            |", CR, LF
 		.BYTE	"|-------------|-----------------------------------|--------------------|", 0
 msg_cf_ld:
@@ -991,7 +881,6 @@ _CMD_RUN		.BYTE	"run", 0
 ; CompactFlash commands
 _CMD_LD			.BYTE	"ld", 0			; list directory
 ;_CMD_CD			.BYTE	"cd", 0		; change directory
-_CMD_SF			.BYTE	"sf", 0			; show file contents
 _CMD_LF			.BYTE	"lf", 0			; load file to RAM
 ;==============================================================================
 ; END of CODE
