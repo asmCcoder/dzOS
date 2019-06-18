@@ -126,7 +126,9 @@ cur_file_clusterlist	.EXPORT		cur_file_clusterlist
 cur_file_size			.EXPORT		cur_file_size
 				.BYTE	0, 0, 0, 0
 
+ram_end_addr			.EXPORT		ram_end_addr
+				.BYTE	0, 0
 
-        .ORG	SYSVARS_END
-		        .BYTE	0
-        .END
+		.ORG	SYSVARS_END
+				.BYTE	0
+		.END

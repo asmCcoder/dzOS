@@ -73,11 +73,13 @@ krn_welcome:
 		ld		hl, krn_msg_cf_init
 		call	F_KRN_WRSTR
 		call	F_BIOS_CF_INIT			
-		ld		hl, krn_msg_OK
-		call	F_KRN_WRSTR
-		ld		hl, krn_msg_cf_fat16ver
-		call	F_KRN_WRSTR
+;		ld		hl, krn_msg_OK
+;		call	F_KRN_WRSTR
+;		ld		hl, krn_msg_cf_fat16ver
+;		call	F_KRN_WRSTR
 		call	F_KRN_F16_READBOOTSEC	; read CF Boot Sector
+		ld		hl, krn_msg_clos_sqbracket
+		call	F_KRN_WRSTR
 
 		; Copy BIOS Jumpblocks from ROM to RAM
 		ld		hl, krn_msg_cpybiosjblks
@@ -97,10 +99,26 @@ krn_welcome:
 		ldir								; copy from ROM to RAM
 		ld		hl, krn_msg_OK
 		call	F_KRN_WRSTR
-		
-		; output 1 empty line
-		ld		b, 1
-		call	F_KRN_EMPTYLINES
+
+		; Show Free available RAM
+		ld		hl, krn_msg_ramsize
+		call	F_KRN_WRSTR
+
+		ld		hl, ram_end_addr + 1		; load MSB
+		ld		a, (hl)						; 	into A
+		cp		$7F							; is it 0x7F? (i.e. 0x7FFF = 32KB)
+		jp		z, ram_is_32kb
+ram_is_64kb:
+		ld		hl, krn_msg_ramsize_64kb
+		call	F_KRN_WRSTR
+		jp		ramsizeprinted
+ram_is_32kb:
+		ld		hl, krn_msg_ramsize_32kb
+		call	F_KRN_WRSTR
+ramsizeprinted:
+;		; output 1 empty line
+;		ld		b, 1
+;		call	F_KRN_EMPTYLINES
 
 		jp		CLI_START				; transfer control to CLI
 ;==============================================================================
@@ -125,7 +143,7 @@ msg_dzos:
 		.BYTE	"##  ##   ##     ##  ##      ## ", CR, LF
 		.BYTE	"#####   ######   ####    ####  ", 0
 krn_msg_cf_init:
-		.BYTE	"....Initialising CompactFlash reader ", 0
+		.BYTE	"....Initialising CompactFlash reader [ ", 0
 krn_msg_cf_fat16ver:
 		.BYTE	"FAT16 implementation v1.0 - No directories supported!", CR, LF, 0
 krn_msg_cpybiosjblks:
@@ -133,8 +151,16 @@ krn_msg_cpybiosjblks:
 		.BYTE	"....Copying BIOS Jumblocks to RAM ", 0
 krn_msg_cpykrnjblks:
 		.BYTE	"....Copying Kernel Jumblocks to RAM ", 0
+krn_msg_ramsize:
+		.BYTE	"....Detecting RAM size ", 0
+krn_msg_ramsize_32kb:
+		.BYTE	"[ 32 KB ]", CR, LF, 0
+krn_msg_ramsize_64kb:
+		.BYTE	"[ 64 KB ]", CR, LF, 0
 krn_msg_OK:
 		.BYTE	"[ OK ]", CR, LF, 0
+krn_msg_clos_sqbracket:
+		.BYTE	" ]", 0
 
 		.ORG	KRN_DZOS_VERSION
 dzos_version:			.EXPORT		dzos_version

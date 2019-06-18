@@ -57,11 +57,11 @@ F_KRN_F16_READBOOTSEC:	.EXPORT		F_KRN_F16_READBOOTSEC
 		cp		$AA
 		jp		nz, error_bootsignature
 		; 0x003 = OEM ID (8 bytes)
-		ld		hl, msg_oemid
-		call	F_KRN_WRSTR				; Output message
-		ld		b, 8					; counter = 8 bytes
-		ld		hl, CF_BUFFER_START + 3h ; point HL to offset 3h in the buffer
-		call	F_KRN_PRN_BYTES
+;		ld		hl, msg_oemid
+;		call	F_KRN_WRSTR				; Output message
+;		ld		b, 8					; counter = 8 bytes
+;		ld		hl, CF_BUFFER_START + 3h ; point HL to offset 3h in the buffer
+;		call	F_KRN_PRN_BYTES
 		; 0x00B = BytesPerSector (2 bytes)
 		ld		de, (CF_BUFFER_START + 0Bh)	; store it in DE for the later calculation of root_dir_sectors
 		; 0x00D = SectorsPerCluster (1 byte)
@@ -95,14 +95,14 @@ F_KRN_F16_READBOOTSEC:	.EXPORT		F_KRN_F16_READBOOTSEC
 		add		hl, bc						; HL = reserv_secs + num_fats * secs_per_fat + root_dir_sectors
 		ld		(clus2secnum), hl
 		; 0x02B = Volume Label (11 bytes)
-		ld		hl, msg_vollabel
-		call	F_KRN_WRSTR				; Output message
-		ld		b, 11					; counter = 11 bytes
-		ld		hl, CF_BUFFER_START + 2Bh ; point HL to offset 2Bh in the buffer
-		call	F_KRN_PRN_BYTES
+;		ld		hl, msg_vollabel
+;		call	F_KRN_WRSTR				; Output message
+;		ld		b, 11					; counter = 11 bytes
+;		ld		hl, CF_BUFFER_START + 2Bh ; point HL to offset 2Bh in the buffer
+;		call	F_KRN_PRN_BYTES
 		; 0x036 = File System (8 bytes)
-		ld		hl, msg_filesys
-		call	F_KRN_WRSTR				; Output message
+;		ld		hl, msg_filesys
+;		call	F_KRN_WRSTR				; Output message
 		ld		b, 8					; counter = 8 bytes
 		ld		hl, CF_BUFFER_START + 36h	; point HL to offset 36h in the buffer
 		call	F_KRN_PRN_BYTES

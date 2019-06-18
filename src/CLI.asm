@@ -53,14 +53,29 @@ cli_welcome:
 		ld		b, 1
 		call 	F_KRN_EMPTYLINES
 
-		; Show Free available RAM
-;		ld		hl, FREERAM_END
-;		ld		de, FREERAM_START
-;		sbc		hl, de					; FREERAM_END - FREERAM_START
-;;		inc		hl						; + 1 byte to account of byte 0
-;		ld		(FREERAM_START), hl		; store it in RAM
-
-; ToDo - Needs to be converted to decimal first!
+print_avail_ram:	; <<<<	ToDo - it doesn't work >>>>
+; 		ld		hl, ram_end_addr
+; 		ld		de, FREERAM_START
+; 		sbc		hl, de
+; 		; Needs to be converted from Hexadcimal to decimal first
+; 		call	F_KRN_BIN2BCD6
+; 		ex		de, hl					; HL = converted 6-digit BCD
+; 		ld		de, buffer_pgm			; where the numbers in ASCII will be stored
+; 		call	F_KRN_BCD2ASCII
+; 		; Print each of the 6 digits
+; 		ld		iy, buffer_pgm
+; 		ld		a, (iy + 0)
+; 		call	F_BIOS_CONOUT
+; 		ld		a, (iy + 1)
+; 		call	F_BIOS_CONOUT
+; 		ld		a, (iy + 2)
+; 		call	F_BIOS_CONOUT
+; 		ld		a, (iy + 3)
+; 		call	F_BIOS_CONOUT
+; 		ld		a, (iy + 4)
+; 		call	F_BIOS_CONOUT
+; 		ld		a, (iy + 5)
+; 		call	F_BIOS_CONOUT
 
 cli_promptloop:
         call	F_CLI_CLRCLIBUFFS	    ; Clear buffers
@@ -830,7 +845,7 @@ msg_help:
 		.BYTE	"|             |                                   |                    |", CR, LF
 ;		.BYTE	"| cd          | Change Directory                  | cd mydocs          |", CR, LF
 		.BYTE	"| ld          | List Directory contents of a Disk | ld                 |", CR, LF
-		.BYTE	"| lf          | Load file (Max. 496 bytes) to RAM | lf 0007            |", CR, LF
+		.BYTE	"| lf          | Load file to RAM                  | lf 0007            |", CR, LF
 		.BYTE	"|-------------|-----------------------------------|--------------------|", 0
 msg_cf_ld:
 		.BYTE	CR, LF

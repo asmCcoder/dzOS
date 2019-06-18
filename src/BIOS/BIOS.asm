@@ -35,6 +35,7 @@
 ;==============================================================================
 #include "src/initACIA.asm"
 ;#include "src/includes/equates.inc"	; this include is already in initACIA.asm
+#include "exp/sysvars.exp"
 
 		.ORG	BIOS_START
 ;==============================================================================
@@ -44,6 +45,7 @@ F_BIOS_CBOOT:
 ; Cold Boot
 ;		LD		HL, STACK_END			; Bottom of the dastaZ80's Stack location
 ; 		^ included in initACIA.asm
+		call	F_BIOS_WHAT_RAMSIZE		; determines if RAM is 32KB or 64KB
 		call	F_BIOS_WBOOT			; Proceed as if in Warm Boot
 		jp		KRN_START				; transfer control to Kernel
 		ret
@@ -62,10 +64,27 @@ F_BIOS_SYSHALT:			.EXPORT			F_BIOS_SYSHALT
 ; RAM Routines
 ;==============================================================================
 ;------------------------------------------------------------------------------
+F_BIOS_WHAT_RAMSIZE:
+; Checks if the system is running with 32KB or 64KB of RAM
+		; check for 32KB
+		ld		hl, 8000h				; HL = pointer to 32KB + 1
+		ld		(hl), 55h				; try to write a value in pointed memory address
+		ld		a, (hl)					; read it back
+		cp		55h						; and compare to be sure that the value was indeed written
+		jp		nz, ram_is_32kb			; if value couldn't be written, then is 32KB
+ram_is_64kb:
+		ld		hl, $FFFF				; 0xFFFF = 65535 bytes = 64KB
+		ld		(ram_end_addr), hl	; store value in sysvars.ram_size
+		ret
+ram_is_32kb:
+		ld		hl, $7FFF				; 0x7FFF = 32767 bytes = 32KB
+		ld		(ram_end_addr), hl	; store value in sysvars.ram_size
+		ret
+;------------------------------------------------------------------------------
 F_BIOS_WIPE_RAM:
 ; Sets zeros (00h) in all RAM addresses after the SysVars area
 		ld		hl, SYSVARS_END + 1		; start address to wipe
-		ld		de, FREERAM_END			; end address to wipe
+		ld		de, (ram_end_addr)		; end address to wipe
 		ld		a, 0					; 00h is the value that will written in all RAM addresses
 wiperam_loop:
 		ld		(hl), a					; put register A content in address pointed by HL

@@ -17,3 +17,8 @@ dzOS.2019.05.31.40.bin
 dzOS.2019.06.02.6.bin
 	lf works now, but it screws lf after
 	removed command: sf
+
+dzOS.2019.06.18.17.bin
+	Boot shows system RAM size (32KB or 64KB)
+	Removed shown OEM ID, Volume Label and File System name (will be shown in the future as a CLI command)
+	File System name shoes now in the Initialising CompactFlash reader sequence

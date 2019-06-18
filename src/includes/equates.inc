@@ -83,8 +83,8 @@ CF_BUFFER_START			.EQU	2380h
 CF_BUFFER_END			.EQU	257Fh
 
 FREERAM_START			.EQU	2580h
-FREERAM_END				.EQU	7FFFh
-FREERAM_TOTAL			.EQU	FREERAM_END - FREERAM_START + 1
+;FREERAM_END				.EQU	7FFFh
+;FREERAM_TOTAL			.EQU	FREERAM_END - FREERAM_START + 1
 
 ;==============================================================================
 ; CompactFlash
