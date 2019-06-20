@@ -68,22 +68,6 @@ F_KRN_TOUPPER:			.EXPORT		F_KRN_TOUPPER
 		and		5Fh						; convert to upper case
 		ret
 ;------------------------------------------------------------------------------
-F_KRN_GET_BYTE_BIN_ECHO:		.EXPORT		F_KRN_GET_BYTE_BIN_ECHO
-; Get Byte (with echo) and convert it to binary
-; Gets a single hexadecimal byte from standard input
-; converts it to binary
-; and stores it in A
-; IN <= None
-; OUT => A received character
-		push	hl						; backup HL
-		call	F_KRN_RDCHARECHO		; get 1st char of byte
-		ld		h, a					; and store it in H
-		call	F_KRN_RDCHARECHO		; get 2nd char of byte
-		ld		l, a					; and store it in L
-		call	F_KRN_ASCII2HEX			; convert contents of HL to a binary number in A
-		pop		hl						; restore HL
-		ret
-;------------------------------------------------------------------------------
 F_KRN_PRN_BYTES:		.EXPORT		F_KRN_PRN_BYTES
 ; Prints bytes
 ; Print n number of bytes as ASCII characters

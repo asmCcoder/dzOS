@@ -151,10 +151,6 @@ F_CLI_PARSECMD:
 ;		ld		de, _CMD_CD
 ;		call	search_cmd				; was the command that we were searching?
 ;		jp		z, CLI_CMD_CD			; yes, then execute the command
-		;search command "help"
-		ld		de, _CMD_HELP
-		call	search_cmd				; was the command that we were searching?
-		jp		z, CLI_CMD_HELP			; yes, then execute the command
 		;search command "load file to RAM"
 		ld		de, _CMD_LF
 		call	search_cmd				; was the command that we were searching?
@@ -567,13 +563,6 @@ CLI_CMD_LD:
 		call	F_CLI_F16_READDIRENTRY	; print contents of current directory
 		ret
 ;------------------------------------------------------------------------------
-;	help - Show list of available commands
-;------------------------------------------------------------------------------
-CLI_CMD_HELP:
-		ld		hl, msg_help
-		call	F_KRN_WRSTR
-		ret
-;------------------------------------------------------------------------------
 ;	peek - Prints the value of a single memory address
 ;------------------------------------------------------------------------------
 CLI_CMD_PEEK:
@@ -704,22 +693,6 @@ msg_prompt:
 msg_ok:
 		.BYTE	CR, LF
 		.BYTE	"OK", 0
-msg_help:
-		.BYTE	CR, LF
-		.BYTE	" dzOS Help", CR, LF
-		.BYTE	"|-------------|-----------------------------------|--------------------|", CR, LF
-		.BYTE	"| Command     | Description                       | Usage              |", CR, LF
-		.BYTE	"|-------------|-----------------------------------|--------------------|", CR, LF
-		.BYTE	"| help        | Shows this help                   | help               |", CR, LF
-		.BYTE	"| peek        | Show a Memory Address value       | peek 20cf          |", CR, LF
-		.BYTE	"| poke        | Change a Memory Address value     | poke 20cf,ff       |", CR, LF
-		.BYTE	"| reset       | Clears RAM and resets the system  | reset              |", CR, LF
-		.BYTE	"| run         | Run from Memory Address           | run 2600           |", CR, LF
-		.BYTE	"|             |                                   |                    |", CR, LF
-;		.BYTE	"| cd          | Change Directory                  | cd mydocs          |", CR, LF
-		.BYTE	"| ld          | List Directory contents of a Disk | ld                 |", CR, LF
-		.BYTE	"| lf          | Load file to RAM                  | lf 0007            |", CR, LF
-		.BYTE	"|-------------|-----------------------------------|--------------------|", 0
 msg_cf_ld:
 		.BYTE	CR, LF
 		.BYTE	"Directory contents", CR, LF
@@ -738,14 +711,13 @@ msg_exeloaded:
 ;------------------------------------------------------------------------------
 error_1001:
 		.BYTE	CR, LF
-		.BYTE	"Command unknown (type help for list of available commands)", CR, LF, 0
+		.BYTE	"Command unknown (use utility 'help' for list of available commands)", CR, LF, 0
 error_1002:
 		.BYTE	CR, LF
 		.BYTE	"Bad parameter(s)", CR, LF, 0
 ;==============================================================================
 ; AVAILABLE CLI COMMANDS
 ;==============================================================================
-_CMD_HELP		.BYTE	"help", 0
 _CMD_PEEK		.BYTE	"peek", 0
 _CMD_POKE		.BYTE	"poke", 0
 _CMD_RESET		.BYTE	"reset", 0

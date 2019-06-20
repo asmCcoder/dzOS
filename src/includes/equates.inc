@@ -63,7 +63,7 @@ KRN_JBLK_START			.EQU	KRN_END + 1
 KRN_JBLK_END			.EQU	KRN_JBLK_START + 255
 
 CLI_START				.EQU	KRN_JBLK_END + 1
-CLI_END					.EQU	CLI_START + 2304
+CLI_END					.EQU	CLI_START + 1408
 
 ;==============================================================================
 ; RAM positions
