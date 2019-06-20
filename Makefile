@@ -1,4 +1,4 @@
-# ToDO - Detect OS Linux or Win
+# ToDo - Detect OS Linux or Win
 ASM = ./TASM.EXE
 ASMFLAGS = -80 -b -a -fFF		# For generating .bin files
 #ASMFLAGS = -80 -o10 -g0 -c -a -y	# For generating Intel HEX files
@@ -16,7 +16,7 @@ WHITE = \033[0;37m
 
 BIOS_MAXSIZE = 832
 KERNEL_MAXSIZE = 2064
-CLI_MAXSIZE = 3136
+CLI_MAXSIZE = 2305
 VERSION_ADDR = 2624
 
 YEAR = $(shell date +"%Y")

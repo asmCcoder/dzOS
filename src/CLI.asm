@@ -39,10 +39,6 @@
 #include "exp/sysvars.exp"
 
 ;==============================================================================
-; EQUates
-;==============================================================================
-LINESPERPAGE			.EQU	20		; 20 lines per page (for memdump)
-;==============================================================================
 ; General Routines
 ;==============================================================================
 		.ORG	CLI_START
@@ -179,10 +175,6 @@ F_CLI_PARSECMD:
 		ld		de, _CMD_POKE
 		call	search_cmd				; was the command that we were searching?
 		jp		z, CLI_CMD_POKE			; yes, then execute the command
-		;search command "memdump"
-		ld		de, _CMD_MEMDUMP
-		call	search_cmd				; was the command that we were searching?
-		jp		z, CLI_CMD_MEMDUMP		; yes, then execute the command
 		;search command "reset"
 		ld		de, _CMD_RESET
 		call	search_cmd				; was the command that we were searching?
@@ -670,120 +662,6 @@ poke:
 		call	F_KRN_WRSTR
 		ret
 ;------------------------------------------------------------------------------
-;	memdump - Shows memory contents of an specified section of memory
-;------------------------------------------------------------------------------
-CLI_CMD_MEMDUMP:
-;	IN <= 	buffer_parm1_val = Start address
-; 			buffer_parm2_val = End address
-;	OUT => default output (e.g. screen, I/O)
-
-	; Check if both parameters were specified
-		call	check_param1
-		ret		z						; param1 specified? No, exit routine
-		call	check_param2			; yes, check param2
-		jp		nz, memdump				; param2 specified? Yes, do the memdump
-		ret								; no, exit routine
-memdump:
-		; print header
-		ld		hl, msg_memdump_hdr
-		call	F_KRN_WRSTR
-	; buffer_parm2_val have the value in hexadecimal
-	; we need to convert it to binary
-		ld		a, (buffer_parm2_val)
-		ld		h, a
-		ld		a, (buffer_parm2_val + 1)
-		ld		l, a
-		call	F_KRN_ASCII2HEX
-		ld		d, a
-		ld		a, (buffer_parm2_val + 2)
-		ld		h, a
-		ld		a, (buffer_parm2_val + 3)
-		ld		l, a
-		call	F_KRN_ASCII2HEX
-		ld		e, a
-	; DE contains the binary value for param2
-		push	de						; store in the stack
-	; buffer_parm1_val have the value in hexadecimal
-	; we need to convert it to binary
-		ld		a, (buffer_parm1_val)
-		ld		h, a
-		ld		a, (buffer_parm1_val + 1)
-		ld		l, a
-		call	F_KRN_ASCII2HEX
-		ld		d, a
-		ld		a, (buffer_parm1_val + 2)
-		ld		h, a
-		ld		a, (buffer_parm1_val + 3)
-		ld		l, a
-		call	F_KRN_ASCII2HEX
-		ld		e, a
-	; DE contains the binary value for param1
-		ex		de, hl					; move from DE to HL (HL=param1)
-		pop		de						; restore from stack (DE=param2)
-start_dump_line:
-		ld		c, LINESPERPAGE			; we will print 23 lines per page
-dump_line:
-		push	hl
-		ld		a, CR
-		call	F_BIOS_CONOUT
-		ld		a, LF
-		call	F_BIOS_CONOUT
-		call	F_KRN_PRN_WORD
-		ld		a, ':'					; semicolon separates mem address from data
-		call	F_BIOS_CONOUT
-		ld		a, ' '					; and an extra space to separate
-		call	F_BIOS_CONOUT
-		ld		b, 10h					; we will output 16 bytes in each line
-dump_loop:
-		ld		a, (hl)
-		call	F_KRN_PRN_BYTE
-		ld		a, ' '
-		call	F_BIOS_CONOUT
-		inc		hl
-		djnz	dump_loop
-		; dump ASCII characters
-		pop		hl
-		ld		b, 10h					; we will output 16 bytes in each line
-		ld		a, ' '
-		call	F_BIOS_CONOUT
-		call	F_BIOS_CONOUT
-ascii_loop:
-		ld		a, (hl)
-		call	F_KRN_PRINTABLE			; is it an ASCII printable character?
-		jr		c, printable
-		ld		a, '.'					; if is not, print a dot
-printable:
-		call	F_BIOS_CONOUT
-		inc		hl
-		djnz	ascii_loop
-
-		push	hl						; backup HL before doing sbc instruction
-		and		a						; clear carry flag
-		sbc		hl, de					; have we reached the end address?
-		pop		hl						; restore HL
-		jr		c, dump_next			; end address not reached. Dump next line
-		ret
-dump_next:
-		dec		c						; 1 line was printed
-		jp		z, askmoreorquit	 	; we have printed 23 lines. More?
-		jp 		dump_line				; print another line
-askmoreorquit:
-		push	hl						; backup HL
-		ld		hl, msg_moreorquit
-		call	F_KRN_WRSTR
-		call	F_BIOS_CONIN			; read key
-		cp		SPACE					; was the SPACE key?
-		jp		z, wantsmore			; user wants more
-		pop		hl						; yes, user wants more. Restore HL
-		ret								; no, user wants to quit
-wantsmore:
-		; print header
-		ld		hl, msg_memdump_hdr
-		call	F_KRN_WRSTR
-		pop		hl						; restore HL
-		jp		start_dump_line			; return to start, so we print 23 more lines
-
-;------------------------------------------------------------------------------
 ;	run - Starts running instructions from a specific memory address
 ;------------------------------------------------------------------------------
 CLI_CMD_RUN:
@@ -826,9 +704,6 @@ msg_prompt:
 msg_ok:
 		.BYTE	CR, LF
 		.BYTE	"OK", 0
-msg_moreorquit:
-		.BYTE	CR, LF
-		.BYTE	"[SPACE] for more or another key for stop", 0
 msg_help:
 		.BYTE	CR, LF
 		.BYTE	" dzOS Help", CR, LF
@@ -836,8 +711,6 @@ msg_help:
 		.BYTE	"| Command     | Description                       | Usage              |", CR, LF
 		.BYTE	"|-------------|-----------------------------------|--------------------|", CR, LF
 		.BYTE	"| help        | Shows this help                   | help               |", CR, LF
-;		.BYTE	"| loadihex    | Load Intel HEX file               | loadihex 2600      |", CR, LF
-		.BYTE	"| memdump     | Memory Dump                       | memdump 0000,0100  |", CR, LF
 		.BYTE	"| peek        | Show a Memory Address value       | peek 20cf          |", CR, LF
 		.BYTE	"| poke        | Change a Memory Address value     | poke 20cf,ff       |", CR, LF
 		.BYTE	"| reset       | Clears RAM and resets the system  | reset              |", CR, LF
@@ -857,10 +730,6 @@ msg_dirlabel:
 		.BYTE	"<DIR>", 0
 msg_crc_ok:
 		.BYTE	" ...[CRC OK]", CR, LF, 0
-msg_memdump_hdr:
-		.BYTE	CR, LF
-		.BYTE	"      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F", CR, LF
-		.BYTE	"      .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ..", 0
 msg_exeloaded:
 		.BYTE	CR, LF
 		.BYTE	"Executable loaded at: 0x", 0
@@ -873,21 +742,10 @@ error_1001:
 error_1002:
 		.BYTE	CR, LF
 		.BYTE	"Bad parameter(s)", CR, LF, 0
-error_1003:
-		.BYTE	CR, LF
-		.BYTE	"Invalid Intel HEX format", CR, LF, 0
-error_1004:
-		.BYTE	CR, LF
-		.BYTE	"Checksum error", CR, LF, 0
-error_1005:
-		.BYTE	CR, LF
-		.BYTE	"File not found", CR, LF, 0
 ;==============================================================================
 ; AVAILABLE CLI COMMANDS
 ;==============================================================================
 _CMD_HELP		.BYTE	"help", 0
-;_CMD_LOADIHEX	.BYTE	"loadihex", 0
-_CMD_MEMDUMP	.BYTE	"memdump", 0
 _CMD_PEEK		.BYTE	"peek", 0
 _CMD_POKE		.BYTE	"poke", 0
 _CMD_RESET		.BYTE	"reset", 0
