@@ -72,7 +72,9 @@ krn_welcome:
 		; Initialise CF card reader
 		ld		hl, krn_msg_cf_init
 		call	F_KRN_WRSTR
-		call	F_BIOS_CF_INIT			
+		call	F_BIOS_CF_INIT
+		cp		$FF
+		jp		z, noCFdrive
 ;		ld		hl, krn_msg_OK
 ;		call	F_KRN_WRSTR
 ;		ld		hl, krn_msg_cf_fat16ver
@@ -81,6 +83,9 @@ krn_welcome:
 		ld		hl, krn_msg_clos_sqbracket
 		call	F_KRN_WRSTR
 
+		; Check FAT's partition state is FF FF
+		call	F_KRN_F16_CHK_PARTSTATE
+copyjmpblks:
 		; Copy BIOS Jumpblocks from ROM to RAM
 		ld		hl, krn_msg_cpybiosjblks
 		call	F_KRN_WRSTR
@@ -121,6 +126,11 @@ ramsizeprinted:
 ;		call	F_KRN_EMPTYLINES
 
 		jp		CLI_START				; transfer control to CLI
+noCFdrive:
+		ld		hl, krn_msg_notfound
+		call	F_KRN_WRSTR
+		jp		copyjmpblks
+
 ;==============================================================================
 ; Kernel Modules
 ;==============================================================================
@@ -161,6 +171,8 @@ krn_msg_OK:
 		.BYTE	"[ OK ]", CR, LF, 0
 krn_msg_clos_sqbracket:
 		.BYTE	" ]", 0
+krn_msg_notfound:
+		.BYTE	" Not Found! ]", 0
 
 		.ORG	KRN_DZOS_VERSION
 dzos_version:			.EXPORT		dzos_version

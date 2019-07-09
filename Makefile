@@ -3,8 +3,8 @@ ASM = ./TASM.EXE
 ASMFLAGS = -80 -b -a -fFF		# For generating .bin files
 #ASMFLAGS = -80 -o10 -g0 -c -a -y	# For generating Intel HEX files
 TARGET = dzOS
-BINARIES = bin/BIOS.bin bin/BIOS.jblks.bin bin/kernel.bin bin/kernel.jblks.bin bin/CLI.bin
-MERGE = bin/BIOS.bin bin/BIOS.jblks.bin bin/kernel.bin bin/kernel.jblks.bin bin/CLI.bin
+BINARIES = bin/BIOS.bin bin/BIOS.jblks.bin bin/kernel.bin bin/kernel.jblks.bin bin/CLI.bin bin/romtrail.bin
+MERGE = bin/BIOS.bin bin/BIOS.jblks.bin bin/kernel.bin bin/kernel.jblks.bin bin/CLI.bin bin/romtrail.bin
 MKDIR = mkdir -p
 RED = \033[0;31m
 GREEN = \033[0;32m
@@ -15,9 +15,9 @@ CYAN = \033[0;36m
 WHITE = \033[0;37m
 
 BIOS_MAXSIZE = 832
-KERNEL_MAXSIZE = 2064
-CLI_MAXSIZE = 1409
-VERSION_ADDR = 2624
+KERNEL_MAXSIZE = 2192
+CLI_MAXSIZE = 1868
+VERSION_ADDR = 3008
 
 YEAR = $(shell date +"%Y")
 MONTH = $(shell date +"%m")
@@ -87,6 +87,10 @@ bin/kernel.jblks.bin: src/kernel/kernel.jblks.asm
 bin/CLI.bin: src/CLI.asm
 	@echo "$(GREEN)#### Compiling $(CYAN)CLI $(GREEN)####$(WHITE)"
 	@$(ASM) $(ASMFLAGS) src/CLI.asm bin/CLI.bin lst/CLI.lst > /tmp/dastaZ80_compile.txt
+	@sed '6!d' /tmp/dastaZ80_compile.txt
+
+bin/romtrail.bin: src/romtrail.asm
+	@$(ASM) $(ASMFLAGS) src/romtrail.asm bin/romtrail.bin lst/romtrail.lst > /tmp/dastaZ80_compile.txt
 	@sed '6!d' /tmp/dastaZ80_compile.txt
 
 

@@ -55,6 +55,7 @@ F_KRN_UDIV16:
 ;		DE = divisor
 ; OUT => HL = quotient
 ;		 DE = remainder
+;		 Z Flag set if remainder = 0, otherwise 0
 		ld		c, l					; c = low byte of dividend
 		ld		a, h					; A = high byte of dividend
 		ld		hl, 0					; initialise remainder HL
@@ -80,4 +81,9 @@ udiv16drop:
 		rla
 		ld		h, a					; H = high byte of quotient
 		or		a						; clear Carry flag
+		; set flag Z if remainder = 0
+		push	hl						; backup HL. Quotient
+		ld		hl, 0
+		sbc		hl, de					; HL = HL - DE
+		pop		hl						; restore HL. Quotient
 		ret

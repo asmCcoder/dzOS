@@ -45,13 +45,7 @@ buffer_cmd:				.EXPORT		buffer_cmd
 buffer_parm1:			.EXPORT		buffer_parm1
 				.FILL	16, 0
 
-buffer_parm1_val:		.EXPORT		buffer_parm1_val
-				.FILL	16, 0
-
 buffer_parm2:			.EXPORT		buffer_parm2
-				.FILL	16, 0
-
-buffer_parm2_val:		.EXPORT		buffer_parm2_val
 				.FILL	16, 0
 
 buffer_pgm:				.EXPORT		buffer_pgm
@@ -121,7 +115,7 @@ cur_file_1stcluster		.EXPORT		cur_file_1stcluster
 				.BYTE	0, 0
 
 cur_file_clusterlist	.EXPORT		cur_file_clusterlist
-				.FILL	11, 0
+				.FILL	57, 0
 
 cur_file_size			.EXPORT		cur_file_size
 				.BYTE	0, 0, 0, 0

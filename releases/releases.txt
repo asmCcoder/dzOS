@@ -22,3 +22,10 @@ dzOS.2019.06.18.17.bin
 	Boot shows system RAM size (32KB or 64KB)
 	Removed shown OEM ID, Volume Label and File System name (will be shown in the future as a CLI command)
 	File System name shoes now in the Initialising CompactFlash reader sequence
+
+dzOS.2019.06.20.10.bin
+	memdump and help removed from CLI (2 KB saved)
+
+dzOS.2019.07.09.8.bin
+	Presence of CompactFlash Drive is checked at boot, and if
+		not present CLI related commands are not available

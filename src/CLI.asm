@@ -39,6 +39,11 @@
 #include "exp/sysvars.exp"
 
 ;==============================================================================
+; EQUates
+;==============================================================================
+LINESPERPAGE			.EQU	20		; 20 lines per page (for memdump)
+
+;==============================================================================
 ; General Routines
 ;==============================================================================
 		.ORG	CLI_START
@@ -120,18 +125,18 @@ was_backspace:
 loop_get_cmd:	
 		jp		readcmd_loop			; read another character
 was_param:
-		ld		a, (buffer_parm1_val)
+		ld		a, (buffer_parm1)
 		cp		00h						; is buffer area empty (=00h)?
 		jp		z, add_value1			; yes, add character to buffer area
-		ld		a, (buffer_parm2_val)
+		ld		a, (buffer_parm2)
 		cp		00h						; is buffer area empty (=00h)?
 		jp		z, add_value2			; yes, add character to buffer area
 		jp		readcmd_loop			; read next character
 add_value1:
-		ld		hl, buffer_parm1_val
+		ld		hl, buffer_parm1
 		jp		readcmd_loop
 add_value2:
-		ld		hl, buffer_parm2_val
+		ld		hl, buffer_parm2
 		jp		readcmd_loop
 end_get_cmd:
 		ret
@@ -143,6 +148,14 @@ F_CLI_PARSECMD:
 		ld		a, (hl)
 		cp		00h						; just an ENTER?
 		jp		z, cli_promptloop		; show prompt again
+		;search command "test"
+		ld		de, _CMD_TEST
+		call	search_cmd				; was the command that we were searching?
+		jp		z, CLI_CMD_TEST			; yes, then execute the command
+		;search command "memdump"
+		ld		de, _CMD_MEMDUMP
+		call	search_cmd				; was the command that we were searching?
+		jp		z, CLI_CMD_MEMDUMP		; yes, then execute the command
 		;search command "ld" (list directory)
 		ld		de, _CMD_LD
 		call	search_cmd				; was the command that we were searching?
@@ -210,10 +223,10 @@ check_param1:
 ; Check if buffer parameters were specified
 ;	OUT => Z flag =	1 command doesn't exist
 ;					0 command does exist
-		ld		a, (buffer_parm1_val)	; get what's in param1
+		ld		a, (buffer_parm1)	; get what's in param1
 		jp		check_param				; check it
 check_param2:
-		ld		a, (buffer_parm2_val)	; get what's in param2
+		ld		a, (buffer_parm2)	; get what's in param2
 check_param:
 		cp		0						; was a parameter specified?
 		jp		z, bad_params			; no, show error and exit subroutine
@@ -224,12 +237,12 @@ bad_params:
 		ret
 ;------------------------------------------------------------------------------
 param1val_uppercase:
-; converts buffer_parm1_val to uppercase
-		ld		hl, buffer_parm1_val - 1
+; converts buffer_parm1 to uppercase
+		ld		hl, buffer_parm1 - 1
 		jp		p1vup_loop
 param2val_uppercase:
-; converts buffer_parm1_val to uppercase
-		ld		hl, buffer_parm2_val - 1
+; converts buffer_parm1 to uppercase
+		ld		hl, buffer_parm2 - 1
 p1vup_loop:
 		inc		hl
 		ld		a, (hl)
@@ -253,19 +266,11 @@ F_CLI_CLRCLIBUFFS:
 		call	F_KRN_SETMEMRNG
 
 		ld	    hl, buffer_parm1
-		ld	    de, buffer_parm1 + 0fh	; buffers are 15 bytes long
-		call	F_KRN_SETMEMRNG
-
-		ld	    hl, buffer_parm1_val
-		ld	    de, buffer_parm1_val + 0fh   ; buffers are 15 bytes long
+		ld	    de, buffer_parm1 + 0fh   ; buffers are 15 bytes long
 		call	F_KRN_SETMEMRNG
 
 		ld	    hl, buffer_parm2
 		ld	    de, buffer_parm2 + 0fh	; buffers are 15 bytes long
-		call	F_KRN_SETMEMRNG
-
-		ld	    hl, buffer_parm2_val
-		ld	    de, buffer_parm2_val + 0fh	; buffers are 15 bytes long
 		call	F_KRN_SETMEMRNG
 		ret
 ;==============================================================================
@@ -412,43 +417,6 @@ nextfiledata:
 		call	F_BIOS_CONOUT
 		ld		a, SPACE
 		call	F_BIOS_CONOUT
-
-		; 0x16	2 bytes		Time modified
-		ld		hl, (cur_file_timemod)
-		call	F_KRN_F16_GETHHMM
-		; print hour and  ':' separator
-		ld		a, (cur_file_timemod_hh)
-		ld		h, 0
-		ld		l, a
-		call	F_KRN_BIN2BCD6
-		ex		de, hl
-		ld		de, buffer_pgm + 4
-		call	F_KRN_BCD2ASCII
-		ld		iy, buffer_pgm + 4
-		ld		a, (iy + 4)
-		call	F_BIOS_CONOUT
-		ld		a, (iy + 5)
-		call	F_BIOS_CONOUT
-		ld		a, TIMESEP
- 		call	F_BIOS_CONOUT
-		; print minutes
-		ld		a, (cur_file_timemod_mm)
-		ld		h, 0
-		ld		l, a
-		call	F_KRN_BIN2BCD6
-		ex		de, hl
-		ld		de, buffer_pgm + 4
-		call	F_KRN_BCD2ASCII
-		ld		iy, buffer_pgm + 4
-		ld		a, (iy + 4)
-		call	F_BIOS_CONOUT
-		ld		a, (iy + 5)
-		call	F_BIOS_CONOUT
-		; print 2 spaces to separate
-		ld		a, SPACE
-		call	F_BIOS_CONOUT
-		ld		a, SPACE
-		call	F_BIOS_CONOUT
 		
 		; 0x18	2 bytes		Date modified
 		ld		hl, (cur_file_datemod)
@@ -501,39 +469,234 @@ nextfiledata:
 		call	F_BIOS_CONOUT
 		ld		a, (iy + 5)
 		call	F_BIOS_CONOUT
+		
 		; print 2 spaces to separate
 		ld		a, SPACE
 		call	F_BIOS_CONOUT
 		ld		a, SPACE
 		call	F_BIOS_CONOUT
+
+		; 0x16	2 bytes		Time modified
+		ld		hl, (cur_file_timemod)
+		call	F_KRN_F16_GETHHMM
+		; print hour and  ':' separator
+		ld		a, (cur_file_timemod_hh)
+		ld		h, 0
+		ld		l, a
+		call	F_KRN_BIN2BCD6
+		ex		de, hl
+		ld		de, buffer_pgm + 4
+		call	F_KRN_BCD2ASCII
+		ld		iy, buffer_pgm + 4
+		ld		a, (iy + 4)
+		call	F_BIOS_CONOUT
+		ld		a, (iy + 5)
+		call	F_BIOS_CONOUT
+		ld		a, TIMESEP
+ 		call	F_BIOS_CONOUT
+		; print minutes
+		ld		a, (cur_file_timemod_mm)
+		ld		h, 0
+		ld		l, a
+		call	F_KRN_BIN2BCD6
+		ex		de, hl
+		ld		de, buffer_pgm + 4
+		call	F_KRN_BCD2ASCII
+		ld		iy, buffer_pgm + 4
+		ld		a, (iy + 4)
+		call	F_BIOS_CONOUT
+		ld		a, (iy + 5)
+		call	F_BIOS_CONOUT
+
 		ld		b, 1
 		call 	F_KRN_EMPTYLINES
 		ret
+;------------------------------------------------------------------------------
+F_CLI_CHK_CFDRIVE:
+; CompactFlash commands are only available if a CompactFlash Drive was
+; found at boot. Here we check if that was the case (i.e. sysvars.num_fats != 0)
+		ld		a, (num_fats)			; load number of FATs found at boot
+										; if a CF Drive is not present, it will be 0
+		cp		0						; is it 0?
+		ret 	nz						; no, then exit routine and command will be executed
+		ld		hl, error_1003			; yes,
+		call	F_KRN_WRSTR				;		print error message
+		jp		cli_promptloop			; and show prompt without executing command
 ;==============================================================================
 ; CLI available Commands
 ;==============================================================================
+;------------------------------------------------------------------------------
+;	test
+;------------------------------------------------------------------------------
+CLI_CMD_TEST:
+		call	F_CLI_CHK_CFDRIVE		; Was CF Drive found at boot?
+		; store filename in sysvars.cur_file_name
+		ld		ix, cur_file_name
+		ld		a, 'a'
+		ld		(ix + 0), a		; 1
+		inc		a
+		ld		(ix + 1), a		; 2
+		inc		a
+		ld		(ix + 2), a		; 3
+		inc		a
+		ld		(ix + 3), a		; 4
+		inc		a
+		ld		(ix + 4), a		; 5
+		inc		a
+		ld		(ix + 5), a		; 6
+		inc		a
+		ld		(ix + 6), a		; 7
+		inc		a
+		ld		(ix + 7), a		; 8
+		; store extension in sysvars.cur_file_extension
+		ld		ix, cur_file_extension
+		ld		a, '1'
+		ld		(ix + 0), a		; 1
+		inc		a
+		ld		(ix + 1), a		; 2
+		inc		a
+		ld		(ix + 2), a		; 3
+
+		ld		de, $2580					; start_address
+		ld		hl, $FFFF					; end_address
+		call	F_KRN_F16_SAVEFILE
+		ret
+;------------------------------------------------------------------------------
+;	memdump - Shows memory contents of an specified section of memory
+;------------------------------------------------------------------------------
+CLI_CMD_MEMDUMP:
+;	IN <= 	buffer_parm1 = Start address
+; 			buffer_parm2 = End address
+;	OUT => default output (e.g. screen, I/O)
+
+	; Check if both parameters were specified
+		call	check_param1
+		ret		z						; param1 specified? No, exit routine
+		call	check_param2			; yes, check param2
+		jp		nz, memdump				; param2 specified? Yes, do the memdump
+		ret								; no, exit routine
+memdump:
+		; print header
+		ld		hl, msg_memdump_hdr
+		call	F_KRN_WRSTR
+	; buffer_parm2 have the value in hexadecimal
+	; we need to convert it to binary
+		ld		a, (buffer_parm2)
+		ld		h, a
+		ld		a, (buffer_parm2 + 1)
+		ld		l, a
+		call	F_KRN_ASCII2HEX
+		ld		d, a
+		ld		a, (buffer_parm2 + 2)
+		ld		h, a
+		ld		a, (buffer_parm2 + 3)
+		ld		l, a
+		call	F_KRN_ASCII2HEX
+		ld		e, a
+	; DE contains the binary value for param2
+		push	de						; store in the stack
+	; buffer_parm1 have the value in hexadecimal
+	; we need to convert it to binary
+		ld		a, (buffer_parm1)
+		ld		h, a
+		ld		a, (buffer_parm1 + 1)
+		ld		l, a
+		call	F_KRN_ASCII2HEX
+		ld		d, a
+		ld		a, (buffer_parm1 + 2)
+		ld		h, a
+		ld		a, (buffer_parm1 + 3)
+		ld		l, a
+		call	F_KRN_ASCII2HEX
+		ld		e, a
+	; DE contains the binary value for param1
+		ex		de, hl					; move from DE to HL (HL=param1)
+		pop		de						; restore from stack (DE=param2)
+start_dump_line:
+		ld		c, LINESPERPAGE			; we will print 23 lines per page
+dump_line:
+		push	hl
+		ld		a, CR
+		call	F_BIOS_CONOUT
+		ld		a, LF
+		call	F_BIOS_CONOUT
+		call	F_KRN_PRN_WORD
+		ld		a, ':'					; semicolon separates mem address from data
+		call	F_BIOS_CONOUT
+		ld		a, ' '					; and an extra space to separate
+		call	F_BIOS_CONOUT
+		ld		b, 10h					; we will output 16 bytes in each line
+dump_loop:
+		ld		a, (hl)
+		call	F_KRN_PRN_BYTE
+		ld		a, ' '
+		call	F_BIOS_CONOUT
+		inc		hl
+		djnz	dump_loop
+		; dump ASCII characters
+		pop		hl
+		ld		b, 10h					; we will output 16 bytes in each line
+		ld		a, ' '
+		call	F_BIOS_CONOUT
+		call	F_BIOS_CONOUT
+ascii_loop:
+		ld		a, (hl)
+		call	F_KRN_PRINTABLE			; is it an ASCII printable character?
+		jr		c, printable
+		ld		a, '.'					; if is not, print a dot
+printable:
+		call	F_BIOS_CONOUT
+		inc		hl
+		djnz	ascii_loop
+
+		push	hl						; backup HL before doing sbc instruction
+		and		a						; clear carry flag
+		sbc		hl, de					; have we reached the end address?
+		pop		hl						; restore HL
+		jr		c, dump_next			; end address not reached. Dump next line
+		ret
+dump_next:
+		dec		c						; 1 line was printed
+		jp		z, askmoreorquit	 	; we have printed 23 lines. More?
+		jp 		dump_line				; print another line
+askmoreorquit:
+		push	hl						; backup HL
+		ld		hl, msg_moreorquit
+		call	F_KRN_WRSTR
+		call	F_BIOS_CONIN			; read key
+		cp		SPACE					; was the SPACE key?
+		jp		z, wantsmore			; user wants more
+		pop		hl						; yes, user wants more. Restore HL
+		ret								; no, user wants to quit
+wantsmore:
+		; print header
+		ld		hl, msg_memdump_hdr
+		call	F_KRN_WRSTR
+		pop		hl						; restore HL
+		jp		start_dump_line			; return to start, so we print 23 more lines
 ;------------------------------------------------------------------------------
 ;	lf - Load a file into RAM
 ;------------------------------------------------------------------------------
 ; bytes of executable code are loaded at load address read from 
 ; the file (bytes 03 and 04)
 CLI_CMD_LF:
+		call	F_CLI_CHK_CFDRIVE		; Was CF Drive found at boot?
 		call	check_param1
 		jp		nz, loadfile			; param1 specified? Yes, do the command
 		ret								; no, exit routine
 loadfile:
 		call	param1val_uppercase
-		ld		de, (buffer_parm1_val)
+		ld		de, (buffer_parm1)
 		; parm1 is in ascii, we need to convert the values to hex
-		ld		a, (buffer_parm1_val)
+		ld		a, (buffer_parm1)
 		ld		h, a
-		ld		a, (buffer_parm1_val + 1)
+		ld		a, (buffer_parm1 + 1)
 		ld		l, a
 		call	F_KRN_ASCII2HEX
 		ld		d, a
-		ld		a, (buffer_parm1_val + 2)
+		ld		a, (buffer_parm1 + 2)
 		ld		h, a
-		ld		a, (buffer_parm1_val + 3)
+		ld		a, (buffer_parm1 + 3)
 		ld		l, a
 		call	F_KRN_ASCII2HEX
 		ld		e, a
@@ -558,6 +721,7 @@ loadfile:
 ;	ld - Prints the list of the current directory of a disk
 ;------------------------------------------------------------------------------
 CLI_CMD_LD:
+		call	F_CLI_CHK_CFDRIVE		; Was CF Drive found at boot?
 		ld		hl, msg_cf_ld			; print directory list header
 		call	F_KRN_WRSTR
 		call	F_CLI_F16_READDIRENTRY	; print contents of current directory
@@ -566,7 +730,7 @@ CLI_CMD_LD:
 ;	peek - Prints the value of a single memory address
 ;------------------------------------------------------------------------------
 CLI_CMD_PEEK:
-;	IN <= 	buffer_parm1_val = address
+;	IN <= 	buffer_parm1 = address
 ;	OUT => default output (e.g. screen, I/O)
 	; Check if parameter 1 was specified
 		call	check_param1
@@ -578,17 +742,17 @@ peek:
 ;		call	F_KRN_WRSTR
 		ld		b, 1
 		call 	F_KRN_EMPTYLINES
-	; buffer_parm1_val has the value in hexadecimal
+	; buffer_parm1 has the value in hexadecimal
 	; we need to convert it to binary
-		ld		a, (buffer_parm1_val)
+		ld		a, (buffer_parm1)
 		ld		h, a
-		ld		a, (buffer_parm1_val + 1)
+		ld		a, (buffer_parm1 + 1)
 		ld		l, a
 		call	F_KRN_ASCII2HEX
 		ld		d, a
-		ld		a, (buffer_parm1_val + 2)
+		ld		a, (buffer_parm1 + 2)
 		ld		h, a
-		ld		a, (buffer_parm1_val + 3)
+		ld		a, (buffer_parm1 + 3)
 		ld		l, a
 		call	F_KRN_ASCII2HEX
 		ld		e, a
@@ -601,8 +765,8 @@ peek:
 ;	poke - Changes a single memory address to a specified value
 ;------------------------------------------------------------------------------
 CLI_CMD_POKE:
-;	IN <= 	buffer_parm1_val = address
-; 			buffer_parm2_val = value
+;	IN <= 	buffer_parm1 = address
+; 			buffer_parm2 = value
 ;	OUT => print message 'OK' to default output (e.g. screen, I/O)
 	; Check if both parameters were specified
 		call	check_param1
@@ -614,7 +778,7 @@ poke:
 		call	param1val_uppercase
 		call	param2val_uppercase
 		; convert param2 to uppercase and store in HL
-		ld		hl, (buffer_parm2_val)
+		ld		hl, (buffer_parm2)
 		ld		a, h
 		call	F_KRN_TOUPPER
 		ld		b, a
@@ -623,25 +787,25 @@ poke:
 		ld		l, b
 		ld		h, a
 		call	F_KRN_ASCII2HEX			; Hex ASCII to Binary conversion
-	; buffer_parm1_val have the address in hexadecimal
+	; buffer_parm1 have the address in hexadecimal
 	; we need to convert it to binary
-		ld		a, (buffer_parm1_val)
+		ld		a, (buffer_parm1)
 		ld		h, a
-		ld		a, (buffer_parm1_val + 1)
+		ld		a, (buffer_parm1 + 1)
 		ld		l, a
 		call	F_KRN_ASCII2HEX
 		ld		d, a
-		ld		a, (buffer_parm1_val + 2)
+		ld		a, (buffer_parm1 + 2)
 		ld		h, a
-		ld		a, (buffer_parm1_val + 3)
+		ld		a, (buffer_parm1 + 3)
 		ld		l, a
 		call	F_KRN_ASCII2HEX
 		ld		e, a					; DE contains the binary value for param1
-	; buffer_parm2_val have the value in hexadecimal
+	; buffer_parm2 have the value in hexadecimal
 	; we need to convert it to binary
-		ld		a, (buffer_parm2_val)
+		ld		a, (buffer_parm2)
 		ld		h, a
-		ld		a, (buffer_parm2_val + 1)
+		ld		a, (buffer_parm2 + 1)
 		ld		l, a
 		call	F_KRN_ASCII2HEX			; A contains the binary value for param2
 		ex		de, hl					; move from DE to HL
@@ -654,24 +818,24 @@ poke:
 ;	run - Starts running instructions from a specific memory address
 ;------------------------------------------------------------------------------
 CLI_CMD_RUN:
-;	IN <= 	buffer_parm1_val = address
+;	IN <= 	buffer_parm1 = address
 	; Check if parameter 1 was specified
 		call	check_param1
 		jp		nz, runner				; param1 specified? Yes, do the run
 		ret								; no, exit routine
 runner:
 		call	param1val_uppercase
-	; buffer_parm1_val have the value in hexadecimal
+	; buffer_parm1 have the value in hexadecimal
 	; we need to convert it to binary
-		ld		a, (buffer_parm1_val)
+		ld		a, (buffer_parm1)
 		ld		h, a
-		ld		a, (buffer_parm1_val + 1)
+		ld		a, (buffer_parm1 + 1)
 		ld		l, a
 		call	F_KRN_ASCII2HEX
 		ld		d, a
-		ld		a, (buffer_parm1_val + 2)
+		ld		a, (buffer_parm1 + 2)
 		ld		h, a
-		ld		a, (buffer_parm1_val + 3)
+		ld		a, (buffer_parm1 + 3)
 		ld		l, a
 		call	F_KRN_ASCII2HEX
 		ld		e, a
@@ -697,7 +861,7 @@ msg_cf_ld:
 		.BYTE	CR, LF
 		.BYTE	"Directory contents", CR, LF
 		.BYTE	"------------------------------------------------", CR, LF
-		.BYTE	"File          Cluster  Size    Time   Date", CR, LF
+		.BYTE	"File          Cluster  Size    Date        Time", CR, LF
 		.BYTE	"------------------------------------------------", CR, LF, 0
 msg_dirlabel:
 		.BYTE	"<DIR>", 0
@@ -706,6 +870,13 @@ msg_crc_ok:
 msg_exeloaded:
 		.BYTE	CR, LF
 		.BYTE	"Executable loaded at: 0x", 0
+msg_moreorquit:
+		.BYTE	CR, LF
+		.BYTE	"[SPACE] for more or another key for stop", 0
+msg_memdump_hdr:
+		.BYTE	CR, LF
+		.BYTE	"      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F", CR, LF
+		.BYTE	"      .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ..", 0
 ;------------------------------------------------------------------------------
 ;             ERROR MESSAGES
 ;------------------------------------------------------------------------------
@@ -715,6 +886,9 @@ error_1001:
 error_1002:
 		.BYTE	CR, LF
 		.BYTE	"Bad parameter(s)", CR, LF, 0
+error_1003:
+		.BYTE	CR, LF
+		.BYTE	"Command unavailable. CF Drive not found at boot", CR, LF, 0
 ;==============================================================================
 ; AVAILABLE CLI COMMANDS
 ;==============================================================================
@@ -722,6 +896,9 @@ _CMD_PEEK		.BYTE	"peek", 0
 _CMD_POKE		.BYTE	"poke", 0
 _CMD_RESET		.BYTE	"reset", 0
 _CMD_RUN		.BYTE	"run", 0
+_CMD_TEST		.BYTE	"test", 0		; ToDo - remove this and all code related
+_CMD_MEMDUMP	.BYTE	"memdump", 0
+
 
 ; CompactFlash commands
 _CMD_LD			.BYTE	"ld", 0			; list directory
