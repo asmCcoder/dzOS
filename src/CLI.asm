@@ -102,15 +102,15 @@ readcmd_loop:
 		cp		','						; test for 2nd parameter entered
 		jp		z, was_param
 		; test for special keys
-;		cp		key_backspace			; Backspace?
+;		cp		KEY_BACKSPACE			; Backspace?
 ;		jp		z, was_backspace		; yes, don't add to buffer
-;		cp		key_up					; up arrow?
+;		cp		KEY_UP					; up arrow?
 ;		jp		z, no_buffer			; yes, don't add to buffer
-;		cp		key_down				; down arrow?
+;		cp		KEY_DOWN				; down arrow?
 ;		jp		z, no_buffer			; yes, don't add to buffer
-;		cp		key_left				; left arrow?
+;		cp		KEY_LEFT				; left arrow?
 ;		jp		z, no_buffer			; yes, don't add to buffer
-;		cp		key_right				; right arrow?
+;		cp		KEY_RIGHT				; right arrow?
 ;		jp		z, no_buffer			; yes, don't add to buffer
 
 		cp		CR						; ENTER?
@@ -278,7 +278,7 @@ F_CLI_CLRCLIBUFFS:
 ;==============================================================================
 ;------------------------------------------------------------------------------
 F_CLI_F16_READDIRENTRY:
-; Read a Directory Entry (32 bytes) from disk
+; Read all directory entries from current directory (sysvars.cur_dir_start)
 ; There are 512 root entries. 32 bytes per entry, therefore 16 entries per sector, 
 ;	therefore 32 sectors
 ; IN <= cur_dir_start = Sector number current dir
@@ -529,37 +529,103 @@ F_CLI_CHK_CFDRIVE:
 ;	test
 ;------------------------------------------------------------------------------
 CLI_CMD_TEST:
-		call	F_CLI_CHK_CFDRIVE		; Was CF Drive found at boot?
-		; store filename in sysvars.cur_file_name
-		ld		ix, cur_file_name
-		ld		a, 'a'
-		ld		(ix + 0), a		; 1
-		inc		a
-		ld		(ix + 1), a		; 2
-		inc		a
-		ld		(ix + 2), a		; 3
-		inc		a
-		ld		(ix + 3), a		; 4
-		inc		a
-		ld		(ix + 4), a		; 5
-		inc		a
-		ld		(ix + 5), a		; 6
-		inc		a
-		ld		(ix + 6), a		; 7
-		inc		a
-		ld		(ix + 7), a		; 8
-		; store extension in sysvars.cur_file_extension
-		ld		ix, cur_file_extension
-		ld		a, '1'
-		ld		(ix + 0), a		; 1
-		inc		a
-		ld		(ix + 1), a		; 2
-		inc		a
-		ld		(ix + 2), a		; 3
+ 		call	F_CLI_CHK_CFDRIVE		; Was CF Drive found at boot?
+; TEST FOR LOAD FILE WITH FILENAME
+		call	F_KRN_F16_FILENAME2CLUSNUM
+; 		; once this is moved to kernel.fat16.asm, we can remove EXPORT of some subroutines
+; 		ld		hl, (cur_dir_start)		; Sector number = current dir
+; 		ld		(cur_sector), hl		; backup Sector number
+; loadsector:
+; 		ld		hl, (cur_sector)
+; 		call	F_KRN_F16_SEC2BUFFER	; load sector into RAM buffer
+; 		ld		ix, CF_BUFFER_START		; byte pointer within the 32 bytes group
+; 		ld		(buffer_pgm), ix		; byte pointer within the 32 bytes group
+; loopreadentries:
+; 		ld		ix, (buffer_pgm)		; byte pointer within the 32 bytes group
+; 		call	F_KRN_F16_GETENTRYDATA	; get data for this entry
+; 		call	F_KRN_F16_ISVALIDFENTRY	; Z flag is set if entry is not a valid file entry
+; 		jp		z, gotonextentry		; not valid file entry, skip entry
+; 		; check if 1st letter of filename in entry matches 1st letter of filename entered by user
+; 		ld		a, (cur_file_name)
+; 		ld		hl, buffer_parm1		; HL = pointer to filename entered by user
+; 		cp		(hl)					; 1st letter matches? 	If yes, compare entire filename
+; 		jp		nz, gotonextentry		; 						If no, skip entry 
 
-		ld		de, $2580					; start_address
-		ld		hl, $FFFF					; end_address
-		call	F_KRN_F16_SAVEFILE
+; 		; is filename same as entered by user?
+; 		call	F_KRN_F16_ENTRY2FILENAME
+; 		ld		hl, (buffer_pgm)		; byte pointer within the 32 bytes group
+; 		push	hl
+; 		ld		hl, buffer_pgm			; HL = pointer to filename in format FFFFFFFF.EEE00
+; 		ld		de, 19					; 32 bytes of sysvars.buffer_pgm - 13 = 19
+; 		add		hl, de					; HL = pointer to sysvars.buffer_pgm + 32
+; 		ld		de, buffer_parm1		; DE = pointer to filename entered by user
+; 		call	F_KRN_STRCMP			; are filename entered by user and filename in file entry same?
+; 		pop		hl
+; 		ld		(buffer_pgm), hl		; byte pointer within the 32 bytes group
+; 		jp		z, testend				; yes
+; 		jp		nz, gotonextentry		; no, go to next entry
+; ;		ret
+; gotonextentry:
+; 		ld		de, 32					; skip 32 bytes
+; 		ld		hl, (buffer_pgm)		; byte pointer within the 32 bytes group
+; 		add		hl, de					; HL = HL + 32
+; 		ld		(buffer_pgm), hl		; byte pointer within the 32 bytes group
+; 		ld		de, 512
+; 		sbc		hl, de
+; 		jp		z, gotonextsector
+; 		jp		loopreadentries
+; gotonextsector:
+; 		ld		hl, cur_sector			; current sector
+; 		inc		(hl)					; next sector
+; 		ld		a, 32
+; 		cp		(hl)					; did we load all 32 bytes of the entry?
+; 		ret		z						; yes, exit routine
+; 		jp		loadsector				; no, load next sector
+; testend:
+; 		ld		de, (cur_file_1stcluster)
+; 	 	call 	F_KRN_F16_LOADEXE2RAM 	; IN <= DE First cluster number
+; 		ex		de, hl					; HL = load address (returned by F_KRN_F16_LOADEXE2RAM)
+; 		jp		(hl)					; jump execution to address in HL
+; ;		ld		hl, msg_exeloaded		; no, print load message
+; ;		call	F_KRN_WRSTR
+; ;		ex		de, hl					; HL = load address (returned by F_KRN_F16_LOADEXE2RAM)
+; ;		call	F_KRN_PRN_WORD			; print load address
+		
+; 		ret
+
+
+
+; TEST FOR F_KRN_F16_SAVEFILE
+		; ; store filename in sysvars.cur_file_name
+		; ld		ix, cur_file_name
+		; ld		a, 't'
+		; ld		(ix + 0), a		; 1
+		; ld		a, 'e'
+		; ld		(ix + 1), a		; 2
+		; ld		a, 's'
+		; ld		(ix + 2), a		; 3
+		; ld		a, 't'
+		; ld		(ix + 3), a		; 4
+		; ld		a, 'f'
+		; ld		(ix + 4), a		; 5
+		; ld		a, 'i'
+		; ld		(ix + 5), a		; 6
+		; ld		a, 'l'
+		; ld		(ix + 6), a		; 7
+		; ld		a, 'e'
+		; ld		(ix + 7), a		; 8
+		; ; store extension in sysvars.cur_file_extension
+		; ld		ix, cur_file_extension
+		; ld		a, 't'
+		; ld		(ix + 0), a		; 1
+		; ld		a, 's'
+		; ld		(ix + 1), a		; 2
+		; ld		a, 't'
+		; ld		(ix + 2), a		; 3
+
+		; ld		de, $0000					; start_address
+		; ld		hl, $1000					; end_address
+		; call	F_KRN_F16_SAVEFILE
 		ret
 ;------------------------------------------------------------------------------
 ;	memdump - Shows memory contents of an specified section of memory
@@ -687,22 +753,10 @@ CLI_CMD_LF:
 loadfile:
 		call	param1val_uppercase
 		ld		de, (buffer_parm1)
-		; parm1 is in ascii, we need to convert the values to hex
-		ld		a, (buffer_parm1)
-		ld		h, a
-		ld		a, (buffer_parm1 + 1)
-		ld		l, a
-		call	F_KRN_ASCII2HEX
-		ld		d, a
-		ld		a, (buffer_parm1 + 2)
-		ld		h, a
-		ld		a, (buffer_parm1 + 3)
-		ld		l, a
-		call	F_KRN_ASCII2HEX
-		ld		e, a
-	; DE contains the binary value for param1
-	; >>>> ToDO - What if user entered wrong cluster? <<<<
-		call	F_KRN_F16_LOADEXE2RAM
+		call	F_KRN_F16_FILENAME2CLUSNUM	; get 1st cluster from filename
+		ret		c						; if Carry Flag is set, file was not found
+		ld		de, (cur_file_1stcluster)
+		call	F_KRN_F16_LOADEXE2RAM	; load from executable's 1st cluster to RAM
 		ld		hl, msg_exeloaded		; no, print load message
 		call	F_KRN_WRSTR
 		ex		de, hl					; HL = load address (returned by F_KRN_F16_LOADEXE2RAM)

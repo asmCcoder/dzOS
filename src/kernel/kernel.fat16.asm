@@ -375,10 +375,10 @@ F_KRN_F16_GETHHMM:		.EXPORT		F_KRN_F16_GETHHMM
 ;		 sysvars.cur_file_timemod_mm = byte representing the minutes in Hexadecimal (0-59)
 ; 		|---- MSB ----| |---- LSB ----|
 ;		7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0
-;		h h h h h m m m m m m x x x x x
+;		h h h h h m m m m m m s s s s s
 ;	hhhhh = binary number of hours (0-23)
 ;	mmmmmm = binary number of minutes (0-59)
-;	xxxxx = binary number of two-second periods (0-29), representing seconds 0 to 58.
+;	sssss = binary number of two-second periods (0-29), representing seconds 0 to 58.
 		; extract hour (hhhhh) from MSB
  		ld		e, h					; we are only interested in the MSB now
 		ld		d, 5					; we want to extract 5 bits
@@ -409,6 +409,9 @@ F_KRN_F16_GETHHMM:		.EXPORT		F_KRN_F16_GETHHMM
 		ld		a, (cur_file_timemod_mm)
 		or		b
 		ld		(cur_file_timemod_mm), a	; store minute value in sysvars
+		; ToDo - Extract seconds
+		ld		a, 0
+		ld		(cur_file_timemod_ss), a	; store seconds value in sysvars
 		ret
 ;------------------------------------------------------------------------------
 F_KRN_F16_GETDDMMYYYY:	.EXPORT		F_KRN_F16_GETDDMMYYYY
@@ -468,6 +471,67 @@ extrday:
  		ld		(cur_file_datemod_dd), a	; store day in sysvars
 		ret
 ;------------------------------------------------------------------------------
+F_KRN_F16_FILENAME2CLUSNUM:		.EXPORT		F_KRN_F16_FILENAME2CLUSNUM
+; Gets a filename and returns the 1st cluster number found in the Root Directory entries
+; IN <= sysvars.buffer_parm1 = filename typed by user
+; OUT => sysvars.cur_file_1stcluster = 1st cluster number
+;		Carry Flag = set if file not found
+		ld		hl, (cur_dir_start)		; Sector number = current dir
+		ld		(cur_sector), hl		; backup Sector number
+load_sector:
+		ld		hl, (cur_sector)
+		call	F_KRN_F16_SEC2BUFFER	; load sector into RAM buffer
+		ld		ix, CF_BUFFER_START		; byte pointer within the 32 bytes group
+		ld		a, (ix + 0)				; load first character of the buffer (i.e. filename)
+		cp		0						; is it a 0?
+		jp		z, filenotfound			; yes, all entries were read and file was not found
+		ld		(buffer_pgm), ix		; byte pointer within the 32 bytes group
+loop_readentries:
+		ld		ix, (buffer_pgm)		; byte pointer within the 32 bytes group
+		call	F_KRN_F16_GETENTRYDATA	; get data for this entry
+		call	F_KRN_F16_ISVALIDFENTRY	; Z flag is set if entry is not a valid file entry
+		jp		z, _nextentry			; not valid file entry, skip entry
+		; check if 1st letter of filename in entry matches 1st letter of filename entered by user
+		ld		a, (cur_file_name)
+		ld		hl, buffer_parm1		; HL = pointer to filename entered by user
+		cp		(hl)					; 1st letter matches? 	If yes, compare entire filename
+		jp		nz, _nextentry			; 						If no, skip entry 
+
+		; is filename same as entered by user?
+		call	F_KRN_F16_ENTRY2FILENAME
+		ld		hl, (buffer_pgm)		; byte pointer within the 32 bytes group
+		push	hl
+		ld		hl, buffer_pgm			; HL = pointer to filename in format FFFFFFFF.EEE00
+		ld		de, 19					; 32 bytes of sysvars.buffer_pgm - 13 = 19
+		add		hl, de					; HL = pointer to sysvars.buffer_pgm + 32
+		ld		de, buffer_parm1		; DE = pointer to filename entered by user
+		call	F_KRN_STRCMP			; are filename entered by user and filename in file entry same?
+		pop		hl
+		ld		(buffer_pgm), hl		; byte pointer within the 32 bytes group
+		ret		z						; exit if filenames are same
+		jp		nz, _nextentry			; no, go to next entry
+_nextentry:
+		ld		de, 32					; skip 32 bytes
+		ld		hl, (buffer_pgm)		; byte pointer within the 32 bytes group
+		add		hl, de					; HL = HL + 32
+		ld		(buffer_pgm), hl		; byte pointer within the 32 bytes group
+		ld		de, 512					; each sector have 512 bytes
+		sbc		hl, de					; did we checked already all entries of the 512 bytes?
+		jp		z, _nextsector			; yes, load Root Directory's next sector
+		jp		loop_readentries		; no, continue checking entries
+_nextsector:
+		ld		hl, cur_sector			; current sector
+		inc		(hl)					; next sector
+		ld		a, 32					; each entry have 32 bytes
+		cp		(hl)					; did we load all 32 bytes of the entry?
+		ret		z						; yes, exit routine
+		jp		load_sector				; no, load next sector
+filenotfound:
+		ld		hl, error_4004
+		call	F_KRN_WRSTR
+		scf								; Set Carry Flag
+		ret
+;------------------------------------------------------------------------------
 F_KRN_F16_SAVEFILE:		.EXPORT		F_KRN_F16_SAVEFILE
 ; Saves blocks of bytes in RAM to a file
 ; Updates FAT entries
@@ -477,39 +541,18 @@ F_KRN_F16_SAVEFILE:		.EXPORT		F_KRN_F16_SAVEFILE
 ;		DE = start_address in RAM
 ;		HL = end_address in RAM
 
-
-; TESTS
-; It should write to:
-; 	04 00 
-; 	48 00 
-; 	4A 00 
-; 	54 00 
-; 	56 00 
-; 	58 00 
-; 	5A 00 
-; 	5C 00
-; 	5E 00
-; 	60 00
-; 	62 00
-; 	64 00
-; 	66 00
-; 	68 00
-; 	6A 00
-; 	6C 00
-; 	6E 00
-; 	70 00
-; 	72 00
-; 	74 00
-; 	76 00
-; 	78 00
-; 	7A 00
-; 	7C 00
-; 	7E 00
-; 	80 00
-; 	82 00
-; 	84 00
-; TESTS
-
+		; Update sysvars.cur_file_size
+		push	de						; backup DE. start_address in RAM
+		push	hl						; backup HL. end_address in RAM
+		ld		(tmp_addr1), de			; backup DE. start_address in RAM
+		ld		(tmp_addr2), hl			; backup HL. end_address in RAM
+		or		a						; Clear Carry Flag
+		sbc		hl, de					; HL = end_address - start_address
+		ld		ix, cur_file_size		; pointer to sysvars.cur_file_size
+		ld		(ix + 0), l				; store file size
+		ld		(ix + 1), h				; 	in sysvars.cur_file_size
+		pop		hl						; restore HL. end_address in RAM
+		pop		de						; restore DE. start_address in RAM
 		; FAT sector = sysvars.reserv_secs
 		push	de						; backup DE. start_address in RAM
 		push	hl						; backup HL. end_address in RAM
@@ -521,92 +564,206 @@ F_KRN_F16_SAVEFILE:		.EXPORT		F_KRN_F16_SAVEFILE
 		push	hl						; backup HL. end_address in RAM
 		; get the list of clusters that will be used for storing the file
 		call	F_KRN_F16_CLUSTERS4NEWFILE		; OUT => A = number of clusters needed for a new file
+		ld		(buffer_pgm), a			; backup A in sysvars.buffer_pgm for later
 		call	F_KRN_F16_GETCLUSLST4NEWFILE	; OUT => list is stored in sysvars.cur_file_clusterlist
 		; change "partition state" to FF F7
 		ld		a, $F7
-;		call	F_KRN_F16_UPD_PARTSTATE
+		call	F_KRN_F16_UPD_PARTSTATE
 		pop		hl						; restore HL. end_address in RAM
 		pop		de						; restore DE. start_address in RAM
-doanothercluster:
 		ld		ix, cur_file_clusterlist
-		ld		a, (ix + 0)				; number of clusters
-		cp		1						; is it 1?
-		jp		z, lastcluster			; yes, then it's last cluster
-										; no, then save 512 bytes to disk, secs_per_clus times
 		inc		ix						; pointer to first cluster
+		ld		iy, cur_file_clusterlist
+doanothercluster:
+		ld		a, (iy + 0)				; number of clusters
+		cp		0						; is it 0?
+		jp		z, allclustdone			; yes, then all cluster done
+										; no, then save 512 bytes to disk, secs_per_clus times
 sectorsloop:
-		; copy RAM bytes to CF Buffer
-		ex		de, hl					; HL =  start_address in RAM
-		ld		de, CF_BUFFER_START
-		ld		bc, 512					; buffer is 512 bytes
-		ldir							; copy to buffer (from Hl to DE)
+		ld		hl, (tmp_addr1)			; restore start_address in RAM
+		call	F_KRN_F16_CPYRAM2CFBUF	; copy RAM bytes to CF Buffer
 		; Determine which is the 1st sector of the cluster
 		ld		d, (ix + 1)				; D = next cluster LSB
 		ld		e, (ix)					; E = next cluster MSB
 		call	F_KRN_F16_CLUS2SEC		; Converts Cluster number to corresponding Sector number. OUT => HL = Sector number
 		ld		a, (secs_per_clus)		; how many sectors per cluster?
-		ld		(cur_sector), a			; store how many in sysvars.cur_sector
+		push	af						; backup A. How many sectors per cluster
 		ex		de, hl					; D sector address LBA 1 (bits 8-15)
 										; E sector address LBA 0 (bits 0-7)
 		ld		bc, 0					; sector address LBA 3 (bits 24-27) and sector address LBA 2 (bits 16-23)
 doanothersector:
-;		call	F_BIOS_CF_WRITE_SEC		; Write a Sector (512 bytes) byte by byte from CF_BUFFER_START in RAM to the CF card
-		push 	de
-		push	hl
-		ld		hl, test_wrclus
-		call	F_KRN_WRSTR
-		pop		de
-		pop		hl
-		push 	de
-		push	hl
-		call	F_KRN_PRN_WORD
-		pop		de
-		pop		hl
-		ld		a, (cur_sector)			; How many sectors left?
+		call	F_BIOS_CF_WRITE_SEC		; Write a Sector (512 bytes) byte by byte from CF_BUFFER_START in RAM to the CF card
+		pop		af						; restore A. How many sectors per cluster
 		dec		a						; counter number of sectors. One sector done
 		cp		1						; is it last one?
 		jp		z, lastsector			; yes, it is last sector
 										; no, do another sector
-		ld		(cur_sector), a			; store how many in sysvars.cur_sector
+		push	af						; backup A. How many sectors per cluster
 		inc		de						; point to next sector
+		push	de
+		ld		hl, (tmp_addr1)			; restore HL. end_address in RAM
+		call	F_KRN_F16_CPYRAM2CFBUF	; copy RAM bytes to CF Buffer
+		pop		de
 		ld		bc, 0					; sector address LBA 3 (bits 24-27) and sector address LBA 2 (bits 16-23)
 		jp		doanothersector
 lastsector:
 		inc		de						; point to next sector
 		ld		bc, 0					; sector address LBA 3 (bits 24-27) and sector address LBA 2 (bits 16-23)
-;		call	F_BIOS_CF_WRITE_SEC		; Write a Sector (512 bytes) byte by byte from CF_BUFFER_START in RAM to the CF card
-		push 	de
-		push	hl
-		ld		hl, test_wrclus
-		call	F_KRN_WRSTR
-		pop		de
-		pop		hl
-		push 	de
-		push	hl
-		call	F_KRN_PRN_WORD
-		pop		de
-		pop		hl
+		call	F_BIOS_CF_WRITE_SEC		; Write a Sector (512 bytes) byte by byte from CF_BUFFER_START in RAM to the CF card
 		ld		hl, cur_file_clusterlist ; counter number of clusters
 		dec		(hl)					; One cluster done
+		inc		ix
+		inc		ix
 		jp		doanothercluster
-lastcluster:
-		; calculate number of sectors left
-		;		IF number of sectors > 1
-		;			loop2
-		;				read 512 bytes into CF Buffer
-		;				save 512 bytes to current sector
-		;				decrease number of sectors
-		;				IF number of sectors > 1 THE loop2 again
-		;				ELSE 	calculate how many bytes
-		;						save how many bytes to current sector
-		; for each cluster in sysvars.cur_file_clusterlist
-		; 	read 512 bytes into CF Buffer, secs_per_clus times and store them in sectors of the cluster
-		jp		wrallclustdone
-wrallclustdone:
-		; ToDo update FAT
+allclustdone:
+		ld		a, (buffer_pgm)			; restore counter number of clusters from sysvars.buffer_pgm
+		ld		(cur_file_clusterlist), a	; and put it back in sysvars.cur_file_clusterlist
+		; Update FAT
+		ld		hl, (reserv_secs)		; HL = sysvars.reserv_secs
+		call	F_KRN_F16_SEC2BUFFER	; read current FAT into RAM buffer
+		ld		ix, cur_file_clusterlist	; pointer to list of clusters
+		ld		a, (ix)					; counter number of clusters
+fatupdloop:
+		ld		d, (ix + 4)			; next cluster LSB
+		ld		e, (ix + 3)			; next cluster MSB
+lastloop:	
+		ld		h, (ix + 2)			; updating cluster LSB
+		ld		l, (ix + 1)			; updating cluster MSB
+		add		hl, hl				; cluster are 2 bytes, so to get offset position we duplicate
+		ld		bc, CF_BUFFER_START		; pointer to start of CF Buffer
+		add		hl, bc				; pointer to CF Buffer + offset
+		ld		(hl), e				; store cluster LSB in FAT
+		inc		hl
+		ld		(hl), d				; store cluster MSB in FAT
+		dec		a					; counter number of clusters -1
+		inc		ix					; move pointer
+		inc		ix					;	2 bytes (to next cluster)
+		cp		2					; all but last clusters done?
+		jp		z, closechain		; yes, last value must be FF FF
+		jp		c, savefat			; no, all clusters done?		
+		jp		fatupdloop			; no, do next cluster
+closechain:
+		ld		de, $FFFF			; last value must be
+		jp		lastloop			;	0xFFFF
+savefat:
+		; Save FAT to disk
+		ld		hl, (reserv_secs)		; HL = sysvars.reserv_secs
+		ex		de, hl					; D sector address LBA 1 (bits 8-15)
+										; E sector address LBA 0 (bits 0-7)
+		ld		bc, 0					; sector address LBA 3 (bits 24-27) and sector address LBA 2 (bits 16-23)
+		call	F_BIOS_CF_WRITE_SEC		; Write a Sector (512 bytes) byte by byte from CF_BUFFER_START in RAM to the CF card
 
-		; ToDo create Directory Entry
+		; Create Directory Entry
+		ld		hl, (cur_dir_start)		; Sector number = current dir
+loopsectors:
+		; search for a sector with an available directory entry
+;		push	hl						; backup HL. Sector number = current dir
+		ld		(cur_sector), hl		; Sector number
+		call	F_KRN_F16_SEC2BUFFER	; load sector into RAM buffer
+		ld		hl, CF_BUFFER_START		; pointer to CF Buffer
+		ld		de, $01E0				; test 0x1E0, if equal 0x00 then directory entry available 
+		add		hl, de					; point to CF Buffer + $01E0
+		ld		a, (hl)					; load value at pointed address
+		cp		0						; is it 0?
+		jp		nz, nextsector			; no, check next sector
+										; yes, cluster with some space found
+		; search for first available directory entry in this sector
+		ld		de, 0					; offset = 0
+loopdirentry:
+		ld		hl, CF_BUFFER_START		; pointer to CF Buffer
+		add		hl, de					; point to CF Buffer + offset
+		ld		a, (hl)					; load value at pointed address
+		cp		0						; is it 0?
+		jp		nz, chknextentry		; no, check next dir. entry
+		jp	creadirentry				; yes, available directory entry found
+chknextentry:
+		ld		hl, 32					; each directory entry is 32 bytes
+		add		hl, de					; HL = 32 + pointer to last directory entry
+		ex		de, hl					; DE = 32 + pointer to last directory entry
+		jp		loopdirentry			; check next directory entry
+nextsector:
+;		pop		hl						; restore HL. Sector number
+		ld		hl, (cur_sector)		; Sector number
+		inc		hl						; point to next sector
+		jp		loopsectors				; check next sector
+creadirentry:
+	; At this point HL contains the CF Buffer + offset where to create the dir. entry
+	
+	; FAT16 Directory Entry Structure
+	; 0x00	8 bytes		(cur_file_name)			Filename
+	; 0x08	3 bytes		(cur_file_extension)	Filename extension 
+	; 0x0b	1 byte		(cur_file_attribs)		File attributes
+	; 0x0c	10 bytes							Reserved for Windows NT
+	; 0x16	2 bytes		(cur_file_timemod)		Time last updated
+	; 0x18	2 bytes		(cur_file_datemod)		Date last updated
+	; 0x1a	2 bytes		(cur_file_1stcluster)	Starting cluster number for file
+	; 0x1c	4 bytes		(cur_file_size)			File size in bytes
+		push	hl						; backup HL. CF Buffer + offset where to create the dir. entry
+		; Update sysvars.cur_file_1stcluster
+		ld		ix, cur_file_clusterlist
+		ld		d, (ix + 2)				; first cluster LSB
+		ld		e, (ix + 1)				; first cluster MSB
+		ld		hl, cur_file_1stcluster
+		ld		(hl), e
+		inc		hl
+		ld		(hl), d
 
+		call	F_KRN_RTC_GETDATE		; Get current date
+		call	F_KRN_RTC_GETTIME		; Get current time
+
+		; Create directory entry and save it to disk
+		pop		hl						; restore HL. CF Buffer + offset where to create the dir. entry
+		; Copy cur_file_name to the directory entry in CF Buffer
+		ex		de, hl					; DE = CF Buffer + offset where to create the dir. entry
+		ld		hl, cur_file_name
+		ld		bc, 8					; filename is 8 bytes
+		ldir							; copy from cur_file_name to CF Buffer + offset
+		; Copy cur_file_extension to the directory entry in CF Buffer
+		ld		hl, cur_file_extension
+		ld		bc, 3					; extension is 3 bytes
+		ldir							; copy from cur_file_extension to CF Buffer + offset
+		; Add file attribute to the directory entry in CF Buffer
+		ld		a, $20					; attribute = only Archive flag set
+		ld		(de), a
+		inc		de						; point to next byte in CF Buffer
+		; 10 bytes Reserved for Windows NT
+		ld		a, 0					; reserved space will be set to 0x00
+		ld		b, 10					; reserved space is 10 bytes
+reservloop:
+		ld		(de), a					; store it in CF Buffer
+		inc		de						; point to next byte
+		djnz	reservloop				; 10 bytes copied? No, loop again
+		; Copy encode cur_file_timemod to the directory entry in CF Buffer
+		call	F_KRN_F16_ENCODE_FILETIME	; HL = File Time in FAT16 notation
+		ld		a, l					; A = LSB of File Time in FAT16 notation
+		ld		(de), a					; store it in CF Buffer
+		inc		de						; point to next byte in CF Buffer
+		ld		a, h					; A = MSB of File Time in FAT16 notation
+		ld		(de), a					; store it in CF Buffer
+		inc		de						; point to next byte in CF Buffer
+		; Copy encode cur_file_datemod to the directory entry in CF Buffer
+		call	F_KRN_F16_ENCODE_FILEDATE	; HL = File Date in FAT16 notation
+		ld		a, l					; A = LSB of File Time in FAT16 notation
+		ld		(de), a					; store it in CF Buffer
+		inc		de						; point to next byte in CF Buffer
+		ld		a, h					; A = MSB of File Time in FAT16 notation
+		ld		(de), a					; store it in CF Buffer
+		inc		de						; point to next byte in CF Buffer
+		; Copy cur_file_1stcluster to the directory entry in CF Buffer
+		ld		ix, cur_file_1stcluster
+		ld		a, (ix + 0)
+		ld		(de), a					; store it in CF Buffer
+		inc		de						; point to next byte in CF Buffer
+		ld		a, (ix + 1)
+		ld		(de), a					; store it in CF Buffer
+		inc		de						; point to next byte in CF Buffer
+		; Copy cur_file_size to the directory entry in CF Buffer
+		ld		hl, cur_file_size	
+		ld		bc, 4					; filesize is 4 bytes
+		ldir							; copy from cur_file_size to CF Buffer + offset	
+		call	F_KRN_F16_BUFFER2SEC	; Save sector to disk
+
+;		pop		hl						; restore HL. Sector number. Not needed, just for keeping from crash when RET later
 		; change "partition state" to FF FF
 		ld		a, $FF
 ;		call	F_KRN_F16_UPD_PARTSTATE
@@ -622,7 +779,7 @@ wrallclustdone:
 ;;		ld		bc, 0					; sector address LBA 3 (bits 24-27) and sector address LBA 2 (bits 16-23)
 ;;		call	F_BIOS_CF_READ_SEC		; read 1 sector (512 bytes)
 ;;		ld		de, CF_BUFFER_START		; DE pointer to the start of the buffer
-;		call	F_KRN_SEC2BUFFER		; load sector into RAM buffer
+;		call	F_KRN_F16_SEC2BUFFER	; load sector into RAM buffer
 ;		; scan current directory for a match to the name specified. Error if not found
 ;		ld		b, 8					; counter = 8 bytes
 ;		ld		hl, buffer_parm1_val	; HL pointer to param1
@@ -759,6 +916,74 @@ wrallclustdone:
 ;		add		hl, bc					; HL pointer to the start of the current entry + 16
 ;		ret
 ;------------------------------------------------------------------------------
+F_KRN_F16_ENTRY2FILENAME:
+; Converts a filename and extension to FFFFFFFF.EEE00
+; where F is character for Filename
+;		E is character for Extension
+; 		00 is zero terminated byte
+; IN <= sysvars.cur_file_name
+;		sysvars.cur_file_extension
+; OUT => filename is stored in last 13 bytes of sysvars.buffer_pgm
+		; copy filename
+;		ld		hl, cur_file_name		; HL = pointer to original filename (sysvars.cur_file_name)
+;		ld		de, buffer_pgm			; DE = pointer to converted filename (sysvars.buffer_pgm)
+		ld		hl, buffer_pgm			; HL = pointer to converted filename (sysvars.buffer_pgm)
+		ld		de, 19					; 32 bytes of sysvars.buffer_pgm - 13 = 19
+		add		hl, de					; HL = pointer to sysvars.buffer_pgm + 32
+		ex		de, hl					; DE = pointer to sysvars.buffer_pgm + 32
+		ld		hl, cur_file_name		; HL = pointer to original filename (sysvars.cur_file_name)
+		ld		b, 8					; counter = 8 bytes for filename
+		call	filenamecpy				; copy string from HL to DE
+		; insert dot between filename and extension
+		ld		a, '.'
+		ld		(de), a
+		inc		de
+		; copy extension
+		ld		hl, cur_file_extension	; HL = pointer to original filename (sysvars.cur_file_name)
+		ld		b, 3					; counter = 3 bytes for extension
+		call	filenamecpy				; copy string from HL to DE
+		ld		a, 0
+		ld		(de), a					; insert zero terminated byte
+		ret
+filenamecpy:
+		ld		a, (hl)					; 1 character from original filename
+		cp		SPACE					; is it a space?
+		jp		z, nocpy				; yes, do not copy it
+		ld		(de), a					; no, copy it to destination string
+		inc		de						; pointer to next converted filename character
+nocpy:		
+		inc		hl						; pointer to next original filename character
+		djnz	filenamecpy				; all characters copied (i.e. B=0)? No, continue copying
+		ret								; yes, exit routine
+;------------------------------------------------------------------------------
+F_KRN_F16_ISVALIDFENTRY:
+; Determines if a directory entry is a valid File entry
+; IN <= sysvars.cur_file_name
+;		sysvars.cur_file_attribs
+; OUT => Z flag is set if entry is not a valid file entry
+; 1st letter of Filename (8 bytes):
+;	0xE5 = Deleted file
+;	0x2E = Not a file but a directory
+; File Attributes (1 byte):
+;	0x08 = Disk's Volume Label
+;	0x10 = Subdirectory
+;	0x0F = Long File Name (LFN) entry
+	ld		a, (cur_file_name)			; load 1st letter of filename
+	cp		$E5							; is it a deleted file?
+	jp		z, invalid					; yes, exit routine with Z set
+	cp		$2E							; is it a directory entry?
+	jp		z, invalid					; yes, exit routine with Z set
+
+	ld		a, (cur_file_attribs)	
+	cp		$08							; is it Disk's Volume Label?
+	jp		z, invalid					; yes, exit routine with Z set
+	cp		$10							; is it a Subdirectory?
+	jp		z, invalid					; yes, exit routine with Z set
+	cp		$0F							; is it Long File Name entry?
+	jp		z, invalid					; yes, exit routine with Z set
+invalid:
+	ret
+;------------------------------------------------------------------------------
 F_KRN_F16_CLUSTERS4NEWFILE:
 ; Calculate number of clusters needed for a new file that will be store in disk
 ; IN <= DE = start_address
@@ -778,8 +1003,7 @@ F_KRN_F16_CLUSTERS4NEWFILE:
 ;		110 sectors / 4 sectors per cluster = 5 clusters
 
 		; total_bytes = end_addr - start_addr
-		or		a						; Clear Carry Flag
-		sbc		hl, de					; HL = total_bytes
+		ld		hl, (cur_file_size)		; HL = total_bytes
 		; total_sectors = total_bytes / bytes_per_sector
 		ld		de, 512					; DE = bytes_per_sector
 		call 	F_KRN_UDIV16			; HL = HL / DE, DE = remainder, S Flag set if DE > 0
@@ -845,16 +1069,20 @@ F_KRN_F16_GETCLUSLST4NEWFILE:
 		ld		hl, 2					; first 2 entries (0 and 1) in FAT are reserved, so we start at 2
 		ld		ix, cur_file_clusterlist + 1	; IX = pointer to sysvar where list will be stored
 getclusloop:
-		push	af						; backup AF. number of clusters needed
+		push	af						; backup AF. Number of clusters needed
 		call	F_KRN_F16_GETNEXTFREECLUSTER	; HL = next offset position available
+		push	hl						; backup HL. Next offset position available
+		ld		de, 2					; divide HL by 2
+		call	F_KRN_UDIV16			;	because each cluster is 2 bytes
 		ld		(ix), l					; store LSB next offset in sysvar.cur_file_clusterlist
 		ld		(ix + 1), h				; store MSB next offset in sysvar.cur_file_clusterlist
-		pop		af						; restore AF. number of clusters needed
+		pop		hl						; retore HL. Next offset position available
+		pop		af						; restore AF. Number of clusters needed
 		dec		a						; decrease number of clusters counter
 		cp		0						; number of clusters counter = 0 ?
 		ret		z						; yes, exit routine
-		inc		bc						; no, increase counter
-		inc		bc						;	by 2 bytes
+;		inc		bc						; no, increase counter
+;		inc		bc						;	by 2 bytes
 		inc		ix						; move pointer within sysvar.cur_file_clusterlist
 		inc		ix						;	by 2 bytes
 		jp		getclusloop				; 	get another available cluster
@@ -891,6 +1119,55 @@ F_KRN_F16_UPD_PARTSTATE:
 		call	F_BIOS_CF_WRITE_SEC		; Write FAT back to disk
 		ret
 ;------------------------------------------------------------------------------
+F_KRN_F16_ENCODE_FILETIME:
+; Converts hh mm ss in hexadecimal notation to 2 bytes in FAT16 notation
+; OUT => HL = 2 bytes (MSB and LSB) in FAT16 notation
+; |---- MSB ----| |---- LSB ----|
+;		7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0
+;		h h h h h m m m m m m s s s s s
+;	hhhhh = binary number of hours (0-23)
+;	mmmmmm = binary number of minutes (0-59)
+;	sssss = binary number of two-second periods (0-29), representing seconds 0 to 58.
+; hh mm ss are stored in sysvars.cur_file_timemod_hh, sysvars.cur_file_timemod_mm
+; and sysvars.cur_file_timemod_ss
+		; ToDo Convert hh mm ss to FAT16 notation
+		ld		hl, $1234
+		ret
+;------------------------------------------------------------------------------
+F_KRN_F16_ENCODE_FILEDATE:
+; Converts dd mm yyyy in hexadecimal notation to 2 bytes in FAT16 notation
+; OUT => HL = 2 bytes (MSB and LSB) in FAT16 notation
+; |---- MSB ----| |---- LSB ----|
+;		7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0
+;		y y y y y y y m m m m d d d d d
+;	yyyyyyy = binary year offset from 1980 (0-119), representing the years 1980 to 2099
+;	mmmm = binary month number (1-12)
+; 	ddddd = indicates the binary day number (1-31)
+; dd mm yyyy are stored in sysvars.cur_file_datemod_dd, sysvars.cur_file_datemod_mm
+; and sysvars.cur_file_datemod_yyyy
+		ld		hl, $4321
+		ret
+;------------------------------------------------------------------------------
+F_KRN_F16_BUFFER2SEC:
+; Saves the bytes from RAM CF_BUFFER_START into a Sector (512 bytes) in disk
+; IN <=  CF_BUFFER_START is filled with the 512 bytes to save
+;		 sysvars.cur_sector contains sector where to save
+		ld		ix, cur_sector
+		ld		e, (ix + 0)				; D sector address LBA 1 (bits 8-15)
+		ld		d, (ix + 1)				; E sector address LBA 0 (bits 0-7)
+		ld		bc, 0					; sector address LBA 3 (bits 24-27) and sector address LBA 2 (bits 16-23)
+		call	F_BIOS_CF_WRITE_SEC		; read 1 sector (512 bytes)
+		ret
+;------------------------------------------------------------------------------
+F_KRN_F16_CPYRAM2CFBUF:
+; Copy RAM bytes to CF Buffer
+; IN <= HL = start_address in RAM
+		ld		de, CF_BUFFER_START		; DE points to CF Buffer, where the data from HL will be copied
+		ld		bc, 512					; buffer is 512 bytes
+		ldir							; copy to buffer (from Hl to DE)
+		ld		(tmp_addr1), hl			; backup start_address in RAM
+		ret
+;------------------------------------------------------------------------------
 ;F_KRN_F16_GETCLUSTER:
 ;; Gets the Cluster number of a directory entry
 ;; IN <= A = Directory entry number (there are 512/32 = 16 entries in each sector)
@@ -904,37 +1181,6 @@ F_KRN_F16_UPD_PARTSTATE:
 ;		;	- Update cur_dir_start with the Cluster number
 ;		call	F_KRN_F16_SEC2BUFFER	; load sector into RAM buffer
 ;		ret
-;------------------------------------------------------------------------------
-;F_KRN_F16_ENTRY2FILENAME:	.EXPORT	F_KRN_F16_ENTRY2FILENAME
-;; Converts a directory entry in format FFFFFFFFEEE to FFFFFFFF.EEE00
-;; where F is character for Filename and E is character for Extension
-;; and 00 is zero terminated byte
-;; IN <= DE pointer to start of directory entry to convert
-;; OUT => filename is stored in sysvars.buffer_pgm
-;		; copy filename
-;		ex		de, hl					; HL pointer to start of directory entry to convert
-;		ld		de, (buffer_pgm)		; DE pointer of converted filename (sysvars.buffer_pgm)
-;		ld		b, 8					; counter = 8 bytes for filename
-;		call	filenamecpy				; copy string from HL to DE
-;		; insert dot between filename and extension
-;		ld		a, '.'
-;		ld		(hl), a
-;		inc		hl
-;		; copy extension
-;		ld		b, 3					; counter = 3 bytes for extension
-;		call	filenamecpy				; copy string from HL to DE
-;		ld		(hl), 0					; insert zero terminated byte
-;		ret
-;filenamecpy:
-;		ld		a, (de)					; 1 character from original string
-;		cp		SPACE					; is it a space?
-;		jp		z, nocpy				; yes, do not copy it
-;		ld		(hl), a					; no, copy it to destination string
-;		inc		hl						; pointer to next original character
-;nocpy:		
-;		inc		de						; pointer to next destination character	
-;		djnz	filenamecpy				; all characters copied (i.e. B=0)? No, continue copying
-;		ret								; yes, exit routine
 ;==============================================================================
 ; Messages
 ;==============================================================================
@@ -957,12 +1203,21 @@ error_4003:
  		.BYTE	CR, LF
  		.BYTE	"WARNING: system was stop during a write-to-disk operation", CR, LF
 		.BYTE	"         Some file(s) may be missing.", CR, LF, 0
-
-
-
-test_wrclus:
+error_4004:
 		.BYTE	CR, LF
-		.BYTE	"Writing cluster: ", 0
-test_wrsec:
+		.BYTE	"ERROR: File not found", 0
+
+
+
+; test_wrclus:
+; 		.BYTE	CR, LF
+; 		.BYTE	"Writing cluster: ", 0
+; test_wrsec:
+; 		.BYTE	CR, LF
+; 		.BYTE	"Writing sector: ", 0
+; test_wrlsec:
+; 		.BYTE	CR, LF
+; 		.BYTE	"Writing Last sector: ", 0
+test_direntry:
 		.BYTE	CR, LF
-		.BYTE	"Writing sector: ", 0
+		.BYTE	"Dir Entry at: ", 0

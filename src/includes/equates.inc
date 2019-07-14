@@ -31,19 +31,24 @@
 ; -----------------------------------------------------------------------------
 
 ;==============================================================================
-; I/O Devices
+; I/O Mapping
 ;==============================================================================
 IODEV_CFLASH			.EQU	10h				; CompactFlash
 
 ;==============================================================================
 ; Screen
 ;==============================================================================
-CR						.EQU	0Dh				; Carriage Return
-LF						.EQU	0Ah				; Line Feed
-;CLRSCR					.EQU	0Ch				; Clear screen
-SPACE					.EQU	20h				; Space
+CR						.EQU	$0D				; Carriage Return
+LF						.EQU	$0A				; Line Feed
+SPACE					.EQU	$20				; Space
+;CLRSCR					.EQU	$0C				; Clear screen
 DATESEP					.EQU	'/'				; Date separator
 TIMESEP					.EQU	':'				; Time separator
+
+;==============================================================================
+; Special Keys
+;==============================================================================
+;KEY_BACKSPACE			.EQU	$7F				; Backspace
 
 ;==============================================================================
 ; ROM positions
@@ -57,13 +62,13 @@ BIOS_JBLK_START			.EQU	BIOS_END + 1
 BIOS_JBLK_END			.EQU	BIOS_JBLK_START + 255
 
 KRN_START				.EQU	BIOS_JBLK_END + 1
-KRN_DZOS_VERSION		.EQU	KRN_START + 2176
+KRN_DZOS_VERSION		.EQU	KRN_START + 2624
 KRN_END					.EQU	KRN_DZOS_VERSION + 15
 KRN_JBLK_START			.EQU	KRN_END + 1
 KRN_JBLK_END			.EQU	KRN_JBLK_START + 255
 
 CLI_START				.EQU	KRN_JBLK_END + 1
-CLI_END					.EQU	CLI_START + 1867
+CLI_END					.EQU	CLI_START + 1803
 
 FREEROM_START			.EQU	CLI_END + 1
 FREEROM_END				.EQU	$1FFF

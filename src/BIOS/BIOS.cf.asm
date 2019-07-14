@@ -38,9 +38,9 @@ F_BIOS_CF_INIT:			.EXPORT		F_BIOS_CF_INIT
 ; Initialise CF IDE card
 ; Sets CF card to 8-bit data transfer mode
 		; Loop until status register bit 7 (busy) is 0
-		call	F_BIOS_CF_CONNECTED
-		cp		$FF
-		ret		z
+		call	F_BIOS_CF_CONNECTED		; was the CF Drive connected at boot?
+		cp		$FF						; is it FF (i.e. not connected)?
+		ret		z						; yes, exit routine
 		call	F_BIOS_CF_BUSY			; wait until CF is ready
 		ld		a, CF_CMD_SET_FEAT_8BIT_ON	; mask for 8-bit mode enable
 		out		(CF_FEAUTURES), a		; send mask to Features register

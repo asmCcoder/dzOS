@@ -161,36 +161,18 @@ F_KRN_STRCMP:			.EXPORT		F_KRN_STRCMP
 ; Compare 2 zero terminated strings
 ; IN <= HL pointer to start of string 1
 ;		DE pointer to start of string 2
-; OUT => if str1 = str2, Z flag set and C flag not set
-;		 if str1 != str2 and str1 longer than str2, Z flag not set and C flag not set
-;		 if str1 != str2 and str1 shorter than str2, Z flag not set and C flag set
-;
-		; Determine which is the shorter string
-		ld		a, (hl)
-		ld		(buffer_pgm), a			; length of string 1
-		ld		a, (de)
-		ld		(buffer_pgm + 1), a		; length of string 2
-		cp		(hl)					; compare length str2 to length str1
-		jr		c, strcmp				; str2 shorter than str1? yes, jump
-		ld		a, (hl)					; no, str1 is shorter
-		; Compare string (through length of shorter)
-strcmp:
-		or		a						; test length of shorter string
-		jr		z, cmplen				; compare lengths
-		ld		b, a					; counter = length of shorter string (number of bytes to compare)
-		ex		de, hl					; DE = str1, HL = str2
+; OUT => if str1 = str2,  Z flag set
+;		 if str1 != str2, Z flag not set
 strcmploop:
-		inc		hl						; pointer to next byte of str2
-		inc		de						; pointer to next byte of str1
-		ld		a, (de)					; byte from str1
-		cp		(hl)					; is it same as in str2?
-		ret		nz						; no, return with flags set
-		djnz	strcmploop				; yes, continue comparing
-cmplen:
-		; compare lengths
-		ld		a, (buffer_pgm)
-		ld		hl, (buffer_pgm + 1)
-		cp		(hl)
+		ld		a, (de)					; load character from string 2
+		cp		0						; is it 0?
+		jp		z, strcmpend			; yes, exit
+		cp		(hl)					; no, is it same character from string 1?
+		jp		nz, strcmpend			; no, exit
+		inc		hl						; pointer to next character from string 1
+		inc		de						; pointer to next character from string 2
+		jp		strcmploop				; compare next characters
+strcmpend:
 		ret								; exit routine, with flags set or cleared
 ;------------------------------------------------------------------------------
 F_KRN_STRCPY:			.EXPORT		F_KRN_STRCPY

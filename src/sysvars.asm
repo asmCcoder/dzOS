@@ -75,9 +75,6 @@ root_dir_sectors:		.EXPORT		root_dir_sectors
 cur_dir_start:			.EXPORT		cur_dir_start
 				.BYTE 	0, 0
 
-file_attributes:		.EXPORT		file_attributes
-				.BYTE 	0
-
 cur_sector:				.EXPORT		cur_sector
 				.BYTE 	0, 0
 
@@ -97,6 +94,9 @@ cur_file_timemod_hh		.EXPORT		cur_file_timemod_hh
 				.BYTE	0
 
 cur_file_timemod_mm		.EXPORT		cur_file_timemod_mm
+				.BYTE	0
+
+cur_file_timemod_ss		.EXPORT		cur_file_timemod_ss
 				.BYTE	0
 
 cur_file_datemod		.EXPORT		cur_file_datemod
@@ -121,6 +121,12 @@ cur_file_size			.EXPORT		cur_file_size
 				.BYTE	0, 0, 0, 0
 
 ram_end_addr			.EXPORT		ram_end_addr
+				.BYTE	0
+
+tmp_addr1				.EXPORT		tmp_addr1
+				.BYTE	0, 0
+
+tmp_addr2				.EXPORT		tmp_addr2
 				.BYTE	0, 0
 
 		.ORG	SYSVARS_END

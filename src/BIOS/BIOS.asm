@@ -45,7 +45,6 @@ F_BIOS_CBOOT:
 ; Cold Boot
 ;		LD		HL, STACK_END			; Bottom of the dastaZ80's Stack location
 ; 		^ included in initACIA.asm
-		call	F_BIOS_WHAT_RAMSIZE		; determines if RAM is 32KB or 64KB
 		call	F_BIOS_WBOOT			; Proceed as if in Warm Boot
 		jp		KRN_START				; transfer control to Kernel
 		ret
@@ -53,6 +52,7 @@ F_BIOS_CBOOT:
 F_BIOS_WBOOT:			.EXPORT			F_BIOS_WBOOT
 ; Warm Boot
 		call	F_BIOS_WIPE_RAM			; wipe (with zeros) the entire RAM, except the Stack area
+		call	F_BIOS_WHAT_RAMSIZE		; determines if RAM is 32KB or 64KB
 		call	F_BIOS_CLRSCR			; Clear screen
 		ret
 ;------------------------------------------------------------------------------
@@ -73,12 +73,12 @@ F_BIOS_WHAT_RAMSIZE:
 		cp		55h						; and compare to be sure that the value was indeed written
 		jp		nz, ram_is_32kb			; if value couldn't be written, then is 32KB
 ram_is_64kb:
-		ld		hl, $FFFF				; 0xFFFF = 65535 bytes = 64KB
-		ld		(ram_end_addr), hl	; store value in sysvars.ram_size
+		ld		a, $FF					; 0xFF for 64KB
+		ld		(ram_end_addr), a		; store value in sysvars.ram_size
 		ret
 ram_is_32kb:
-		ld		hl, $7FFF				; 0x7FFF = 32767 bytes = 32KB
-		ld		(ram_end_addr), hl	; store value in sysvars.ram_size
+		ld		a, $7F					; 0x7F for 32KB
+		ld		(ram_end_addr), a		; store value in sysvars.ram_size
 		ret
 ;------------------------------------------------------------------------------
 F_BIOS_WIPE_RAM:
@@ -87,7 +87,9 @@ F_BIOS_WIPE_RAM:
 		; 		 uncomment this line and remove the line after
 ;		ld		hl, STACK_END + 1		; start address to wipe
 		ld		hl, ACIA_BUFFERS_END	; start address to wipe
-		ld		de, (ram_end_addr)		; end address to wipe
+		ld		a, (ram_end_addr)		; end address MSB to wipe
+		ld		d, a					; store it in D
+		ld		e, $FF					; end address LSB to wipe
 		ld		a, 0					; 00h is the value that will written in all RAM addresses
 wiperam_loop:
 		ld		(hl), a					; put register A content in address pointed by HL

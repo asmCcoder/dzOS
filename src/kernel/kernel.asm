@@ -109,8 +109,7 @@ copyjmpblks:
 		ld		hl, krn_msg_ramsize
 		call	F_KRN_WRSTR
 
-		ld		hl, ram_end_addr + 1		; load MSB
-		ld		a, (hl)						; 	into A
+		ld		a, (ram_end_addr)
 		cp		$7F							; is it 0x7F? (i.e. 0x7FFF = 32KB)
 		jp		z, ram_is_32kb
 ram_is_64kb:
@@ -139,6 +138,7 @@ noCFdrive:
 #include "src/kernel/kernel.conv.asm"
 #include "src/kernel/kernel.math.asm"
 #include "src/kernel/kernel.fat16.asm"
+#include "src/kernel/kernel.rtc.asm"
 ;==============================================================================
 ; Messages
 ;==============================================================================
