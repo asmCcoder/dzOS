@@ -48,7 +48,7 @@ TIMESEP					.EQU	':'				; Time separator
 ;==============================================================================
 ; Special Keys
 ;==============================================================================
-;KEY_BACKSPACE			.EQU	$7F				; Backspace
+KEY_BACKSPACE			.EQU	$7F				; Backspace
 
 ;==============================================================================
 ; ROM positions
@@ -62,13 +62,13 @@ BIOS_JBLK_START			.EQU	BIOS_END + 1
 BIOS_JBLK_END			.EQU	BIOS_JBLK_START + 255
 
 KRN_START				.EQU	BIOS_JBLK_END + 1
-KRN_DZOS_VERSION		.EQU	KRN_START + 2624
+KRN_DZOS_VERSION		.EQU	KRN_START + 2752
 KRN_END					.EQU	KRN_DZOS_VERSION + 15
 KRN_JBLK_START			.EQU	KRN_END + 1
 KRN_JBLK_END			.EQU	KRN_JBLK_START + 255
 
 CLI_START				.EQU	KRN_JBLK_END + 1
-CLI_END					.EQU	CLI_START + 1803
+CLI_END					.EQU	CLI_START + 1996
 
 FREEROM_START			.EQU	CLI_END + 1
 FREEROM_END				.EQU	$1FFF

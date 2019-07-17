@@ -37,7 +37,7 @@
 F_KRN_SETMEMRNG:		.EXPORT		F_KRN_SETMEMRNG
 ; Sets a value in a memory position range
 ; IN <= HL = start position
-;		DE = end position.
+;		DE = end position
 ;		A  = value to set
 ; The routine will go from HL to DE and store in each position whatever value
 ; is in register A.

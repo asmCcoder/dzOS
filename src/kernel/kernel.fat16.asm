@@ -304,11 +304,25 @@ F_KRN_F16_GETENTRYDATA:	.EXPORT		F_KRN_F16_GETENTRYDATA
 ;		 cur_file_1stcluster	First Cluster	2 bytes
 ;		 cur_file_size			File size		4 bytes
 		; 0x00 	8 bytes 	File name
+		; ld		de, cur_file_name		; DE = pointer to cur_file_name
+		; ld		hl, 8					; filename is 8 bytes
+		; add		hl, de					; HL = pointer to cur_file_name + 8 bytes
+		; ex		de, hl					; HL = pointer to cur_file_name, DE = pointer to cur_file_name + 8 bytes
+		; ld		a, 0					; clean up
+		; call	F_KRN_SETMEMRNG			;	the cur_file_name
 		ld		hl, (buffer_pgm)
 		ld		de, cur_file_name
 		ld		b, 8
 		call	F_KRN_STRCPY
 		; 0x08 	3 bytes 	File extension
+		; ld		hl, cur_file_extension	; HL = pointer to cur_file_extension
+		; ld		a, 0					; clean up
+		; ld		(hl), a					;	each
+		; inc		hl						;	of
+		; ld		(hl), a					; 	the
+		; inc		hl						; 	3
+		; ld		(hl), a					; 	bytes
+		; inc		hl						; 	of cur_file_extension
 		ld		hl, (buffer_pgm)
 		ld		bc, $8
 		add		hl, bc
@@ -471,14 +485,27 @@ extrday:
  		ld		(cur_file_datemod_dd), a	; store day in sysvars
 		ret
 ;------------------------------------------------------------------------------
-F_KRN_F16_FILENAME2CLUSNUM:		.EXPORT		F_KRN_F16_FILENAME2CLUSNUM
-; Gets a filename and returns the 1st cluster number found in the Root Directory entries
-; IN <= sysvars.buffer_parm1 = filename typed by user
-; OUT => sysvars.cur_file_1stcluster = 1st cluster number
-;		Carry Flag = set if file not found
+F_KRN_F16_GETDIRENTRY4FILENAME:	.EXPORT		F_KRN_F16_GETDIRENTRY4FILENAME
+; For a specific filename, gets all data of a directory entry found in the Root Directory entries
+; 	Reads all sectors of Root Directory and searches for a filename
+;	Once found, F_KRN_F16_GETENTRYDATA gets all data of the entry into sysvars
+;	If not found an error message is printed
+; IN <= sysvars.tmp_addr1 = address where filename typed by user is stored
+; OUT => sysvars.cur_file_name
+;		 sysvars.cur_file_extension
+;		 sysvars.cur_file_attribs
+;		 sysvars.cur_file_timemod
+;		 sysvars.cur_file_datemod
+;		 sysvars.cur_file_1stcluster
+;		 sysvars.cur_file_size
+;		 sysvars.tmp_byte = entry number in the directory sector
+;		 Carry Flag = set if file not found
+
 		ld		hl, (cur_dir_start)		; Sector number = current dir
 		ld		(cur_sector), hl		; backup Sector number
 load_sector:
+		ld		a, 0					; initialise counter for
+		ld		(tmp_byte), a			; 	entry number within sector (max. 512 / 32 = 16)
 		ld		hl, (cur_sector)
 		call	F_KRN_F16_SEC2BUFFER	; load sector into RAM buffer
 		ld		ix, CF_BUFFER_START		; byte pointer within the 32 bytes group
@@ -493,7 +520,8 @@ loop_readentries:
 		jp		z, _nextentry			; not valid file entry, skip entry
 		; check if 1st letter of filename in entry matches 1st letter of filename entered by user
 		ld		a, (cur_file_name)
-		ld		hl, buffer_parm1		; HL = pointer to filename entered by user
+		ld		hl, (tmp_addr1)			; HL = pointer to filename entered by user
+
 		cp		(hl)					; 1st letter matches? 	If yes, compare entire filename
 		jp		nz, _nextentry			; 						If no, skip entry 
 
@@ -504,13 +532,14 @@ loop_readentries:
 		ld		hl, buffer_pgm			; HL = pointer to filename in format FFFFFFFF.EEE00
 		ld		de, 19					; 32 bytes of sysvars.buffer_pgm - 13 = 19
 		add		hl, de					; HL = pointer to sysvars.buffer_pgm + 32
-		ld		de, buffer_parm1		; DE = pointer to filename entered by user
+		ld		de, (tmp_addr1)			; DE = pointer to filename entered by user
 		call	F_KRN_STRCMP			; are filename entered by user and filename in file entry same?
 		pop		hl
 		ld		(buffer_pgm), hl		; byte pointer within the 32 bytes group
-		ret		z						; exit if filenames are same
-		jp		nz, _nextentry			; no, go to next entry
+		jp		z, filefound			; exit if filenames are same (filename found)
 _nextentry:
+		ld		hl, tmp_byte			; increase counter for
+		inc		(hl)					;	entry number within sector (max. 512 / 32 = 16)
 		ld		de, 32					; skip 32 bytes
 		ld		hl, (buffer_pgm)		; byte pointer within the 32 bytes group
 		add		hl, de					; HL = HL + 32
@@ -524,12 +553,93 @@ _nextsector:
 		inc		(hl)					; next sector
 		ld		a, 32					; each entry have 32 bytes
 		cp		(hl)					; did we load all 32 bytes of the entry?
-		ret		z						; yes, exit routine
+		ret		z						; yes, exit routine							ToDo - Is this right? What about other sectors?
 		jp		load_sector				; no, load next sector
+filefound:
+		or		a						; reset Carry Flag
+		ret
 filenotfound:
-		ld		hl, error_4004
-		call	F_KRN_WRSTR
 		scf								; Set Carry Flag
+		ret
+;------------------------------------------------------------------------------
+F_KRN_F16_RENFILE:		.EXPORT		F_KRN_F16_RENFILE
+; Renames a file
+; IN <= sysvars.tmp_addr1 = address where original filename is stored
+;		sysvars.tmp_addr2 = address where new filename is stored
+; OUT => Carry Flag = set if original file doesn't exist or new filename already exists
+		ld		hl, (tmp_addr1)			; HL = address where original filename is stored
+		push	hl						; backup HL. Address where original filename is stored
+		ld		de, (tmp_addr2)			; DE = address where new filename is stored
+		; Check if new filename already exists
+		ld		(tmp_addr1), de			; tmp_addr1 = address where new filename is stored
+		call	F_KRN_F16_GETDIRENTRY4FILENAME	; check for new filename
+		pop 	hl						; restore HL. Address where original filename is stored
+		jp		nc, rfendwitherror		; if Carry Flag is set, file was not found
+		; If new name doesn't exist, then load dir entry of original file
+		ld		(tmp_addr1), hl			; tmp_addr1 = address where original filename is stored
+		call	F_KRN_F16_GETDIRENTRY4FILENAME	; check for original filename
+		jp		c, rfendwitherror		; if Carry Flag is set, file was not found
+		; cur_file_name = extract filename
+		ld		hl, (tmp_addr2)
+		call	F_KRN_F16_NAMEEXT2FILENAME
+		; cur_file_extension = extract extension
+		ld		hl, (tmp_addr2)
+		call	F_KRN_F16_NAMEEXT2EXTENSION
+		; cur_file_timemod
+		call	F_KRN_RTC_GETTIME		; Get current time
+		call	F_KRN_F16_ENCODE_FILETIME
+		ld		de, cur_file_timemod
+		ld		a, l
+		ld		(de), a
+		inc		de
+		ld		a, h
+		ld		(de), a
+		; cur_file_datemod
+		call	F_KRN_RTC_GETDATE		; Get current date
+		call	F_KRN_F16_ENCODE_FILEDATE
+		ld		de, cur_file_datemod
+		ld		a, l
+		ld		(de), a
+		inc		de
+		ld		a, h
+		ld		(de), a
+		; Change filename, extension, time last modified, date last modified in Directory Entry in CF Buffer
+		ld		a, (tmp_byte)			; entry number within the sector
+		ld		e, a					; E = entry number within the sector
+		ld		d, 0
+		ld		a, 32					; each entry is 32 bytes
+		call	F_KRN_MULTIPLY816_SLOW	; HL = A * DE
+		ex		de, hl					; DE = entry position within the sector
+		ld		hl, CF_BUFFER_START		; pointer to start of CF Buffer
+		add		hl, de					; HL = start of CF Buffer + entry position within the sector
+
+		ld		de, cur_file_name
+		ld		b, 8					; filename is 8 bytes
+		ex		de, hl
+		call	F_KRN_STRCPY			; update Directory Entry's filename
+		ex		de, hl
+		ld		de, cur_file_extension
+		ld		b, 3					; extension is 3 bytes
+		ex		de, hl
+		call	F_KRN_STRCPY			; update Directory Entry's extension
+		ex		de, hl
+		ld		de, 11					; skip 11 bytes (i.e. file attribs. and reserved)
+		add		hl, de
+		ld		de, cur_file_timemod
+		ld		b, 2					; time modif. is 2 bytes
+		ex		de, hl
+		call	F_KRN_STRCPY			; update Directory Entry's time modified
+		ex		de, hl
+		ld		de, cur_file_datemod
+		ld		b, 2					; time modif. is 2 bytes
+		ex		de, hl
+		call	F_KRN_STRCPY			; update Directory Entry's date modified
+		; Save Directory Entry from CF Buffer to sector in disk
+		call	F_KRN_F16_BUFFER2SEC	; Save sector to disk
+		or		a						; reset Carry Flag
+		ret
+rfendwitherror:
+		scf								; set Carry Flag
 		ret
 ;------------------------------------------------------------------------------
 F_KRN_F16_SAVEFILE:		.EXPORT		F_KRN_F16_SAVEFILE
@@ -916,6 +1026,68 @@ reservloop:
 ;		add		hl, bc					; HL pointer to the start of the current entry + 16
 ;		ret
 ;------------------------------------------------------------------------------
+F_KRN_F16_NAMEEXT2FILENAME:
+; Extracts filename.extension (characters before dot) to sysvars.cur_file_name
+; IN <= HL address where filename.extension is stored
+; OUT => A = character counter where the dot is
+		; clean up cur_file_name
+		push	hl						; backup HL. Address where filename.extension is stored
+		ld		de, cur_file_name		; DE = pointer to cur_file_name
+		ld		hl, 7					; filename is 8 bytes - byte 0
+		add		hl, de					; HL = pointer to cur_file_name + 8 bytes
+		ex		de, hl					; HL = pointer to cur_file_name, DE = pointer to cur_file_name + 8 bytes
+		ld		a, $20					; clean up with spaces
+		call	F_KRN_SETMEMRNG
+		pop		hl						; restore HL. Address where filename.extension is stored
+
+		ld		b, 8					; filename is maximum 8 characters
+		ld		de, cur_file_name		; DE pointer to sysvars.cur_file_name
+loop_extractname:
+		ld		a, (hl)					; load charcater from filename.extension
+		cp		'.'						; is it a dot?
+		jp		z, endextractname		; yes, exit routine
+		ld		(de), a					; store character in sysvars.cur_file_name
+		inc		de						; point to next character in sysvars.cur_file_name
+		inc		hl						; point to next character in filename.extension
+		djnz	loop_extractname		; extract next character
+endextractname:
+		or		a						; Clear Carry Flag
+		ld		a, 8					; filename is maximum 8 characters
+		sbc		a, b					; A = position of the dot
+		ret
+;------------------------------------------------------------------------------
+F_KRN_F16_NAMEEXT2EXTENSION:
+; Extracts filename.extension (characters after dot) to sysvars.cur_file_extension
+; IN <= A = position of the dot within filename.extension
+;		HL = address where filename.extension is stored
+		; clean up cur_file_extension
+		ld		b, a					; backup A. Position of the dot within filename.extension
+		ld		de, cur_file_extension	; DE = pointer to cur_file_extension
+		ld		a, $20					; clean up with spaces
+		ld		(de), a					; byte 1 of 3
+		inc		de
+		ld		(de), a					; byte 2 of 3
+		inc		de
+		ld		(de), a					; byte 3 of 3
+		ld		a, b					; restore A. Position of the dot within filename.extension
+
+		ld		b, 0					; move HL pointer
+		ld		c, a					; 	to the position
+		add		hl, bc					; 	of the dot
+		inc		hl						;	and  skip the dot
+		ld		b, 3					; extension is maximum 3 characters
+		ld		de, cur_file_extension	; DE pointer to sysvars.cur_file_extension
+loop_extractext:
+		ld		a, (hl)					; load character from filename.extension
+		cp		0						; is it a 0?
+		jp		z, extractextend		; yes, exit routine
+		ld		(de), a					; store character in sysvars.cur_file_extension
+		inc		de						; point to next character in sysvars.cur_file_extension
+		inc		hl						; point to next character in filename.extension
+		djnz	loop_extractext			; extract next character
+extractextend:
+		ret
+;------------------------------------------------------------------------------
 F_KRN_F16_ENTRY2FILENAME:
 ; Converts a filename and extension to FFFFFFFF.EEE00
 ; where F is character for Filename
@@ -1203,21 +1375,3 @@ error_4003:
  		.BYTE	CR, LF
  		.BYTE	"WARNING: system was stop during a write-to-disk operation", CR, LF
 		.BYTE	"         Some file(s) may be missing.", CR, LF, 0
-error_4004:
-		.BYTE	CR, LF
-		.BYTE	"ERROR: File not found", 0
-
-
-
-; test_wrclus:
-; 		.BYTE	CR, LF
-; 		.BYTE	"Writing cluster: ", 0
-; test_wrsec:
-; 		.BYTE	CR, LF
-; 		.BYTE	"Writing sector: ", 0
-; test_wrlsec:
-; 		.BYTE	CR, LF
-; 		.BYTE	"Writing Last sector: ", 0
-test_direntry:
-		.BYTE	CR, LF
-		.BYTE	"Dir Entry at: ", 0

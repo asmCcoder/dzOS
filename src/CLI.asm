@@ -79,16 +79,15 @@ print_avail_ram:	; <<<<	ToDo - it doesn't work >>>>
 ; 		call	F_BIOS_CONOUT
 
 cli_promptloop:
-        call	F_CLI_CLRCLIBUFFS	    ; Clear buffers
-		ld	    hl, msg_prompt          ; Prompt
-		call	F_KRN_WRSTR             ; Output message
-		ld	    hl, buffer_cmd          ; address where commands are buffered
+		call	F_CLI_CLRCLIBUFFS		; Clear buffers
+		ld		hl, msg_prompt			; Prompt
+		call	F_KRN_WRSTR				; Output message
+		ld		hl, buffer_cmd			; address where commands are buffered
 
-		ld	    a, 0
-		ld	    (buffer_cmd), a
+		; read and parse cmd
 		call	F_CLI_READCMD
 		call	F_CLI_PARSECMD
-        jp      cli_promptloop
+		jp		cli_promptloop
 ;------------------------------------------------------------------------------
 F_CLI_READCMD:
 ; Read string containing a command and parameters
@@ -96,13 +95,13 @@ F_CLI_READCMD:
 ; Parameters (identified by colon) are detected and stored in *parameters buffer*,
 ; meanwhile the command is store in *command buffer*.
 readcmd_loop:
-		call	F_KRN_RDCHARECHO		; read a character, with echo
-		cp		' '						; test for 1st parameter entered
-		jp		z, was_param
-		cp		','						; test for 2nd parameter entered
-		jp		z, was_param
+		call	F_KRN_RDCHARECHO		; read a character into A, with echo
+		cp		SPACE					; was a SPACE?
+		jp		z, was_param1			; test for 1st parameter entered
+		cp		','						; was a comma?
+		jp		z, was_param2			; test for 2nd parameter entered
 		; test for special keys
-;		cp		KEY_BACKSPACE			; Backspace?
+;		cp		KEY_BACKSPACE			; was a backspace?
 ;		jp		z, was_backspace		; yes, don't add to buffer
 ;		cp		KEY_UP					; up arrow?
 ;		jp		z, no_buffer			; yes, don't add to buffer
@@ -120,22 +119,24 @@ readcmd_loop:
 no_buffer:
 		jp		readcmd_loop			; don't add last entered char to buffer
 		ret
-was_backspace:	
-		dec		hl						; go back 1 unit on the buffer pointer
+;was_backspace:	
 loop_get_cmd:	
 		jp		readcmd_loop			; read another character
-was_param:
-		ld		a, (buffer_parm1)
-		cp		00h						; is buffer area empty (=00h)?
-		jp		z, add_value1			; yes, add character to buffer area
-		ld		a, (buffer_parm2)
-		cp		00h						; is buffer area empty (=00h)?
-		jp		z, add_value2			; yes, add character to buffer area
-		jp		readcmd_loop			; read next character
-add_value1:
+; Use this code if want to separate parameters by space instead of comma
+; was_param:
+; 		ld		a, (buffer_parm1)
+; 		cp		00h						; is buffer area empty (=00h)?
+; 		jp		z, add_value1			; yes, add character to buffer area
+; 		ld		a, (buffer_parm2)
+; 		cp		00h						; is buffer area empty (=00h)?
+; 		jp		z, add_value2			; yes, add character to buffer area
+; 		jp		readcmd_loop			; read next character
+was_param1:
+;add_value1:
 		ld		hl, buffer_parm1
 		jp		readcmd_loop
-add_value2:
+was_param2:
+;add_value2:
 		ld		hl, buffer_parm2
 		jp		readcmd_loop
 end_get_cmd:
@@ -176,6 +177,10 @@ F_CLI_PARSECMD:
 		ld		de, _CMD_RUN
 		call	search_cmd				; was the command that we were searching?
 		jp		z, CLI_CMD_RUN			; yes, then execute the command
+		;search command "rename file"
+		ld		de, _CMD_NF
+		call	search_cmd				; was the command that we were searching?
+		jp		z, CLI_CMD_NF			; yes, then execute the command
 		;search command "peek"
 		ld		de, _CMD_PEEK
 		call	search_cmd				; was the command that we were searching?
@@ -223,10 +228,10 @@ check_param1:
 ; Check if buffer parameters were specified
 ;	OUT => Z flag =	1 command doesn't exist
 ;					0 command does exist
-		ld		a, (buffer_parm1)	; get what's in param1
+		ld		a, (buffer_parm1)		; get what's in param1
 		jp		check_param				; check it
 check_param2:
-		ld		a, (buffer_parm2)	; get what's in param2
+		ld		a, (buffer_parm2)		; get what's in param2
 check_param:
 		cp		0						; was a parameter specified?
 		jp		z, bad_params			; no, show error and exit subroutine
@@ -260,17 +265,17 @@ plvup_end:
 F_CLI_CLRCLIBUFFS:
 ; Clear CLI buffers
 ; Clears the buffers used for F_CLI_READCMD, so they are ready for a new command
-		ld	    a, 0
-		ld	    hl, buffer_cmd
-		ld	    de, buffer_cmd + 0fh    ; buffers are 15 bytes long
+		ld		a, 0
+		ld		hl, buffer_cmd
+		ld		de, buffer_cmd + 15		; buffers are 15 bytes long
 		call	F_KRN_SETMEMRNG
 
-		ld	    hl, buffer_parm1
-		ld	    de, buffer_parm1 + 0fh   ; buffers are 15 bytes long
+		ld		hl, buffer_parm1
+		ld		de, buffer_parm1 + 15	; buffers are 15 bytes long
 		call	F_KRN_SETMEMRNG
 
-		ld	    hl, buffer_parm2
-		ld	    de, buffer_parm2 + 0fh	; buffers are 15 bytes long
+		ld		hl, buffer_parm2
+		ld		de, buffer_parm2 + 15	; buffers are 15 bytes long
 		call	F_KRN_SETMEMRNG
 		ret
 ;==============================================================================
@@ -530,102 +535,42 @@ F_CLI_CHK_CFDRIVE:
 ;------------------------------------------------------------------------------
 CLI_CMD_TEST:
  		call	F_CLI_CHK_CFDRIVE		; Was CF Drive found at boot?
-; TEST FOR LOAD FILE WITH FILENAME
-		call	F_KRN_F16_FILENAME2CLUSNUM
-; 		; once this is moved to kernel.fat16.asm, we can remove EXPORT of some subroutines
-; 		ld		hl, (cur_dir_start)		; Sector number = current dir
-; 		ld		(cur_sector), hl		; backup Sector number
-; loadsector:
-; 		ld		hl, (cur_sector)
-; 		call	F_KRN_F16_SEC2BUFFER	; load sector into RAM buffer
-; 		ld		ix, CF_BUFFER_START		; byte pointer within the 32 bytes group
-; 		ld		(buffer_pgm), ix		; byte pointer within the 32 bytes group
-; loopreadentries:
-; 		ld		ix, (buffer_pgm)		; byte pointer within the 32 bytes group
-; 		call	F_KRN_F16_GETENTRYDATA	; get data for this entry
-; 		call	F_KRN_F16_ISVALIDFENTRY	; Z flag is set if entry is not a valid file entry
-; 		jp		z, gotonextentry		; not valid file entry, skip entry
-; 		; check if 1st letter of filename in entry matches 1st letter of filename entered by user
-; 		ld		a, (cur_file_name)
-; 		ld		hl, buffer_parm1		; HL = pointer to filename entered by user
-; 		cp		(hl)					; 1st letter matches? 	If yes, compare entire filename
-; 		jp		nz, gotonextentry		; 						If no, skip entry 
-
-; 		; is filename same as entered by user?
-; 		call	F_KRN_F16_ENTRY2FILENAME
-; 		ld		hl, (buffer_pgm)		; byte pointer within the 32 bytes group
-; 		push	hl
-; 		ld		hl, buffer_pgm			; HL = pointer to filename in format FFFFFFFF.EEE00
-; 		ld		de, 19					; 32 bytes of sysvars.buffer_pgm - 13 = 19
-; 		add		hl, de					; HL = pointer to sysvars.buffer_pgm + 32
-; 		ld		de, buffer_parm1		; DE = pointer to filename entered by user
-; 		call	F_KRN_STRCMP			; are filename entered by user and filename in file entry same?
-; 		pop		hl
-; 		ld		(buffer_pgm), hl		; byte pointer within the 32 bytes group
-; 		jp		z, testend				; yes
-; 		jp		nz, gotonextentry		; no, go to next entry
-; ;		ret
-; gotonextentry:
-; 		ld		de, 32					; skip 32 bytes
-; 		ld		hl, (buffer_pgm)		; byte pointer within the 32 bytes group
-; 		add		hl, de					; HL = HL + 32
-; 		ld		(buffer_pgm), hl		; byte pointer within the 32 bytes group
-; 		ld		de, 512
-; 		sbc		hl, de
-; 		jp		z, gotonextsector
-; 		jp		loopreadentries
-; gotonextsector:
-; 		ld		hl, cur_sector			; current sector
-; 		inc		(hl)					; next sector
-; 		ld		a, 32
-; 		cp		(hl)					; did we load all 32 bytes of the entry?
-; 		ret		z						; yes, exit routine
-; 		jp		loadsector				; no, load next sector
-; testend:
-; 		ld		de, (cur_file_1stcluster)
-; 	 	call 	F_KRN_F16_LOADEXE2RAM 	; IN <= DE First cluster number
-; 		ex		de, hl					; HL = load address (returned by F_KRN_F16_LOADEXE2RAM)
-; 		jp		(hl)					; jump execution to address in HL
-; ;		ld		hl, msg_exeloaded		; no, print load message
-; ;		call	F_KRN_WRSTR
-; ;		ex		de, hl					; HL = load address (returned by F_KRN_F16_LOADEXE2RAM)
-; ;		call	F_KRN_PRN_WORD			; print load address
-		
-; 		ret
 
 
+		call	F_KRN_F16_GETDIRENTRY4FILENAME
+		ret
 
-; TEST FOR F_KRN_F16_SAVEFILE
-		; ; store filename in sysvars.cur_file_name
-		; ld		ix, cur_file_name
-		; ld		a, 't'
-		; ld		(ix + 0), a		; 1
-		; ld		a, 'e'
-		; ld		(ix + 1), a		; 2
-		; ld		a, 's'
-		; ld		(ix + 2), a		; 3
-		; ld		a, 't'
-		; ld		(ix + 3), a		; 4
-		; ld		a, 'f'
-		; ld		(ix + 4), a		; 5
-		; ld		a, 'i'
-		; ld		(ix + 5), a		; 6
-		; ld		a, 'l'
-		; ld		(ix + 6), a		; 7
-		; ld		a, 'e'
-		; ld		(ix + 7), a		; 8
-		; ; store extension in sysvars.cur_file_extension
-		; ld		ix, cur_file_extension
-		; ld		a, 't'
-		; ld		(ix + 0), a		; 1
-		; ld		a, 's'
-		; ld		(ix + 1), a		; 2
-		; ld		a, 't'
-		; ld		(ix + 2), a		; 3
+; ; TEST FOR F_KRN_F16_SAVEFILE
+; 		; store filename in sysvars.cur_file_name
+; 		ld		ix, cur_file_name
+; 		ld		a, 't'
+; 		ld		(ix + 0), a		; 1
+; 		ld		a, 'e'
+; 		ld		(ix + 1), a		; 2
+; 		ld		a, 's'
+; 		ld		(ix + 2), a		; 3
+; 		ld		a, 't'
+; 		ld		(ix + 3), a		; 4
+; 		ld		a, 'f'
+; 		ld		(ix + 4), a		; 5
+; 		ld		a, 'i'
+; 		ld		(ix + 5), a		; 6
+; 		ld		a, 'l'
+; 		ld		(ix + 6), a		; 7
+; 		ld		a, 'e'
+; 		ld		(ix + 7), a		; 8
+; 		; store extension in sysvars.cur_file_extension
+; 		ld		ix, cur_file_extension
+; 		ld		a, 't'
+; 		ld		(ix + 0), a		; 1
+; 		ld		a, 's'
+; 		ld		(ix + 1), a		; 2
+; 		ld		a, 't'
+; 		ld		(ix + 2), a		; 3
 
-		; ld		de, $0000					; start_address
-		; ld		hl, $1000					; end_address
-		; call	F_KRN_F16_SAVEFILE
+; 		ld		de, $0000					; start_address
+; 		ld		hl, $1000					; end_address
+; 		call	F_KRN_F16_SAVEFILE
 		ret
 ;------------------------------------------------------------------------------
 ;	memdump - Shows memory contents of an specified section of memory
@@ -639,9 +584,7 @@ CLI_CMD_MEMDUMP:
 		call	check_param1
 		ret		z						; param1 specified? No, exit routine
 		call	check_param2			; yes, check param2
-		jp		nz, memdump				; param2 specified? Yes, do the memdump
-		ret								; no, exit routine
-memdump:
+		ret		z						; param2 specified? No, exit routine
 		; print header
 		ld		hl, msg_memdump_hdr
 		call	F_KRN_WRSTR
@@ -751,16 +694,45 @@ CLI_CMD_LF:
 		jp		nz, loadfile			; param1 specified? Yes, do the command
 		ret								; no, exit routine
 loadfile:
-		call	param1val_uppercase
-		ld		de, (buffer_parm1)
-		call	F_KRN_F16_FILENAME2CLUSNUM	; get 1st cluster from filename
-		ret		c						; if Carry Flag is set, file was not found
+		call	param1val_uppercase		; convert param1 to uppercase
+		ld		hl, buffer_parm1
+		ld		(tmp_addr1), hl
+		call	F_KRN_F16_GETDIRENTRY4FILENAME
+		jp		c, ldfilenotfound		; if Carry Flag is set, file was not found
 		ld		de, (cur_file_1stcluster)
 		call	F_KRN_F16_LOADEXE2RAM	; load from executable's 1st cluster to RAM
 		ld		hl, msg_exeloaded		; no, print load message
 		call	F_KRN_WRSTR
 		ex		de, hl					; HL = load address (returned by F_KRN_F16_LOADEXE2RAM)
 		call	F_KRN_PRN_WORD			; print load address
+		ret
+ldfilenotfound:
+		ld		hl, error_1004
+		call	F_KRN_WRSTR
+		ret
+;------------------------------------------------------------------------------
+;	nf - Rename file
+;------------------------------------------------------------------------------
+CLI_CMD_NF:
+		call	F_CLI_CHK_CFDRIVE		; Was CF Drive found at boot?
+		; Check if both parameters were specified
+		call	check_param1
+		ret		z						; param1 specified? No, exit routine
+		call	check_param2			; yes, check param2
+		ret		z						; param2 specified? No, exit routine
+renfile:
+		call	param1val_uppercase		; convert param1 to uppercase
+		call	param2val_uppercase		; convert param2 to uppercase
+		ld		hl, buffer_parm1		; copy entered param1's address
+		ld		(tmp_addr1), hl			; 	to tmp_addr1
+		ld		hl, buffer_parm2		; copy entered param2's address
+		ld		(tmp_addr2), hl			; 	to tmp_addr2
+		call	F_KRN_F16_RENFILE
+		jp		c, nferror
+		ret
+nferror:
+		ld		hl, error_1005
+		call	F_KRN_WRSTR
 		ret
 ;------------------------------------------------------------------------------
 ;	cd - Changes current directory of a disk
@@ -791,7 +763,7 @@ CLI_CMD_PEEK:
 		jp		nz, peek				; param1 specified? Yes, do the peek
 		ret								; no, exit routine
 peek:
-		call	param1val_uppercase
+		call	param1val_uppercase		; convert param1 to uppercase
 ;		ld		hl, empty_line			; print an empty line
 ;		call	F_KRN_WRSTR
 		ld		b, 1
@@ -826,11 +798,9 @@ CLI_CMD_POKE:
 		call	check_param1
 		ret		z						; param1 specified? No, exit routine
 		call	check_param2			; yes, check param2
-		jp		nz, poke				; param2 specified? Yes, do the poke
-		ret								; no, exit routine
-poke:
-		call	param1val_uppercase
-		call	param2val_uppercase
+		ret		z						; param2 specified? No, exit routine
+		call	param1val_uppercase		; convert param1 to uppercase
+		call	param2val_uppercase		; convert param2 to uppercase
 		; convert param2 to uppercase and store in HL
 		ld		hl, (buffer_parm2)
 		ld		a, h
@@ -878,7 +848,7 @@ CLI_CMD_RUN:
 		jp		nz, runner				; param1 specified? Yes, do the run
 		ret								; no, exit routine
 runner:
-		call	param1val_uppercase
+		call	param1val_uppercase		; convert param1 to uppercase
 	; buffer_parm1 have the value in hexadecimal
 	; we need to convert it to binary
 		ld		a, (buffer_parm1)
@@ -943,6 +913,12 @@ error_1002:
 error_1003:
 		.BYTE	CR, LF
 		.BYTE	"Command unavailable. CF Drive not found at boot", CR, LF, 0
+error_1004:
+		.BYTE	CR, LF
+		.BYTE	"ERROR: File not found", 0
+error_1005:
+		.BYTE	CR, LF
+		.BYTE	"ERROR: Original file not found or destination file already exists", 0
 ;==============================================================================
 ; AVAILABLE CLI COMMANDS
 ;==============================================================================
@@ -958,6 +934,7 @@ _CMD_MEMDUMP	.BYTE	"memdump", 0
 _CMD_LD			.BYTE	"ld", 0			; list directory
 ;_CMD_CD			.BYTE	"cd", 0		; change directory
 _CMD_LF			.BYTE	"lf", 0			; load file to RAM
+_CMD_NF			.BYTE	"nf", 0			; rename file
 ;==============================================================================
 ; END of CODE
 ;==============================================================================

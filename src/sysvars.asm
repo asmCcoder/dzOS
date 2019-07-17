@@ -129,6 +129,9 @@ tmp_addr1				.EXPORT		tmp_addr1
 tmp_addr2				.EXPORT		tmp_addr2
 				.BYTE	0, 0
 
+tmp_byte				.EXPORT		tmp_byte
+				.BYTE	0
+
 		.ORG	SYSVARS_END
 				.BYTE	0
 		.END
