@@ -15,9 +15,9 @@ CYAN = \033[0;36m
 WHITE = \033[0;37m
 
 BIOS_MAXSIZE = 832
-KERNEL_MAXSIZE = 2768
+KERNEL_MAXSIZE = 2960
 CLI_MAXSIZE = 1997
-VERSION_ADDR = 3584
+VERSION_ADDR = 3776
 
 YEAR = $(shell date +"%Y")
 MONTH = $(shell date +"%m")
@@ -49,6 +49,7 @@ all: clean $(TARGET)
 	$(eval BUILDNUM = $(shell echo $$(($(BUILDNUM) + 1))))
 	@echo "$(BUILDNUM)" > buildnum
 	@echo "$(BUILDDATE_NOW)" > builddate;
+	@grep -nir ToDo src/ > ToDo.txt
 
 directories:
 	@$(MKDIR) bin

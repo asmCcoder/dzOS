@@ -181,6 +181,10 @@ F_CLI_PARSECMD:
 		ld		de, _CMD_NF
 		call	search_cmd				; was the command that we were searching?
 		jp		z, CLI_CMD_NF			; yes, then execute the command
+		;search command "remove file"
+		ld		de, _CMD_RF
+		call	search_cmd				; was the command that we were searching?
+		jp		z, CLI_CMD_RF			; yes, then execute the command
 		;search command "peek"
 		ld		de, _CMD_PEEK
 		call	search_cmd				; was the command that we were searching?
@@ -537,7 +541,6 @@ CLI_CMD_TEST:
  		call	F_CLI_CHK_CFDRIVE		; Was CF Drive found at boot?
 
 
-		call	F_KRN_F16_GETDIRENTRY4FILENAME
 		ret
 
 ; ; TEST FOR F_KRN_F16_SAVEFILE
@@ -732,6 +735,25 @@ renfile:
 		ret
 nferror:
 		ld		hl, error_1005
+		call	F_KRN_WRSTR
+		ret
+;------------------------------------------------------------------------------
+;	rf - Remove file
+;------------------------------------------------------------------------------
+CLI_CMD_RF:
+		call	F_CLI_CHK_CFDRIVE		; Was CF Drive found at boot?
+		; Check if parameter was specified
+		call	check_param1
+		ret		z						; param1 specified? No, exit routine
+rmvfile:
+		call	param1val_uppercase		; convert param1 to uppercase
+		ld		hl, buffer_parm1		; copy entered param1's address
+		ld		(tmp_addr1), hl			; 	to tmp_addr1
+		call	F_KRN_F16_RMVFILE
+		jp		c, rmverror
+		ret
+rmverror:
+		ld		hl, error_1004
 		call	F_KRN_WRSTR
 		ret
 ;------------------------------------------------------------------------------
@@ -935,6 +957,7 @@ _CMD_LD			.BYTE	"ld", 0			; list directory
 ;_CMD_CD			.BYTE	"cd", 0		; change directory
 _CMD_LF			.BYTE	"lf", 0			; load file to RAM
 _CMD_NF			.BYTE	"nf", 0			; rename file
+_CMD_RF			.BYTE	"rf", 0			; remove file
 ;==============================================================================
 ; END of CODE
 ;==============================================================================

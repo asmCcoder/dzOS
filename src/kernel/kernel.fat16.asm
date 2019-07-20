@@ -553,7 +553,7 @@ _nextsector:
 		inc		(hl)					; next sector
 		ld		a, 32					; each entry have 32 bytes
 		cp		(hl)					; did we load all 32 bytes of the entry?
-		ret		z						; yes, exit routine							ToDo - Is this right? What about other sectors?
+		ret		z						; yes, exit routine				ToDo - Is this right? What about other sectors?
 		jp		load_sector				; no, load next sector
 filefound:
 		or		a						; reset Carry Flag
@@ -574,71 +574,82 @@ F_KRN_F16_RENFILE:		.EXPORT		F_KRN_F16_RENFILE
 		ld		(tmp_addr1), de			; tmp_addr1 = address where new filename is stored
 		call	F_KRN_F16_GETDIRENTRY4FILENAME	; check for new filename
 		pop 	hl						; restore HL. Address where original filename is stored
-		jp		nc, rfendwitherror		; if Carry Flag is set, file was not found
+		jp		nc, renendwitherror		; if Carry Flag is set, file was not found
 		; If new name doesn't exist, then load dir entry of original file
 		ld		(tmp_addr1), hl			; tmp_addr1 = address where original filename is stored
 		call	F_KRN_F16_GETDIRENTRY4FILENAME	; check for original filename
-		jp		c, rfendwitherror		; if Carry Flag is set, file was not found
+		jp		c, renendwitherror		; if Carry Flag is set, file was not found
 		; cur_file_name = extract filename
 		ld		hl, (tmp_addr2)
 		call	F_KRN_F16_NAMEEXT2FILENAME
 		; cur_file_extension = extract extension
 		ld		hl, (tmp_addr2)
 		call	F_KRN_F16_NAMEEXT2EXTENSION
-		; cur_file_timemod
-		call	F_KRN_RTC_GETTIME		; Get current time
-		call	F_KRN_F16_ENCODE_FILETIME
-		ld		de, cur_file_timemod
-		ld		a, l
-		ld		(de), a
-		inc		de
-		ld		a, h
-		ld		(de), a
-		; cur_file_datemod
-		call	F_KRN_RTC_GETDATE		; Get current date
-		call	F_KRN_F16_ENCODE_FILEDATE
-		ld		de, cur_file_datemod
-		ld		a, l
-		ld		(de), a
-		inc		de
-		ld		a, h
-		ld		(de), a
+		; Update cur_file_timemod and cur_file_datemod with current time/date
+		call	F_KRN_F16_UPTDATETIMESYSVARS
 		; Change filename, extension, time last modified, date last modified in Directory Entry in CF Buffer
-		ld		a, (tmp_byte)			; entry number within the sector
-		ld		e, a					; E = entry number within the sector
-		ld		d, 0
-		ld		a, 32					; each entry is 32 bytes
-		call	F_KRN_MULTIPLY816_SLOW	; HL = A * DE
-		ex		de, hl					; DE = entry position within the sector
-		ld		hl, CF_BUFFER_START		; pointer to start of CF Buffer
-		add		hl, de					; HL = start of CF Buffer + entry position within the sector
-
-		ld		de, cur_file_name
-		ld		b, 8					; filename is 8 bytes
-		ex		de, hl
-		call	F_KRN_STRCPY			; update Directory Entry's filename
-		ex		de, hl
-		ld		de, cur_file_extension
-		ld		b, 3					; extension is 3 bytes
-		ex		de, hl
-		call	F_KRN_STRCPY			; update Directory Entry's extension
-		ex		de, hl
-		ld		de, 11					; skip 11 bytes (i.e. file attribs. and reserved)
-		add		hl, de
-		ld		de, cur_file_timemod
-		ld		b, 2					; time modif. is 2 bytes
-		ex		de, hl
-		call	F_KRN_STRCPY			; update Directory Entry's time modified
-		ex		de, hl
-		ld		de, cur_file_datemod
-		ld		b, 2					; time modif. is 2 bytes
-		ex		de, hl
-		call	F_KRN_STRCPY			; update Directory Entry's date modified
+		call	F_KRN_F16_UPDDIRENTRYBUFFER
 		; Save Directory Entry from CF Buffer to sector in disk
-		call	F_KRN_F16_BUFFER2SEC	; Save sector to disk
+		call	F_KRN_F16_BUFFER2SEC
 		or		a						; reset Carry Flag
 		ret
-rfendwitherror:
+renendwitherror:
+		scf								; set Carry Flag
+		ret
+;------------------------------------------------------------------------------
+F_KRN_F16_RMVFILE:		.EXPORT		F_KRN_F16_RMVFILE
+; Removes a file
+; IN <= sysvars.tmp_addr1 = address where filename to remove is stored
+; OUT => Carry Flag = set if file doesn't exist
+		; Check file that user wants to remove exists and if so, get directory entry data
+		call	F_KRN_F16_GETDIRENTRY4FILENAME	; check for filename
+		jp		c, rmvendwitherror		; if Carry Flag is set, file was not found
+		; Write 0xE5 in the first character of the Directory Entry of the file
+		ld		a, $E5					; 0xE5 indicates removed file
+ 		ld		(cur_file_name), a		; change 1st character of sysvars.cur_file_name to 0xE5
+		; Update cur_file_timemod and cur_file_datemod with current time/date
+		call	F_KRN_F16_UPTDATETIMESYSVARS
+		; Change filename, extension, time last modified, date last modified in Directory Entry in CF Buffer
+		call	F_KRN_F16_UPDDIRENTRYBUFFER
+		; Save Directory Entry from CF Buffer to sector in disk
+		call	F_KRN_F16_BUFFER2SEC
+ 		; Load FAT (FAT sector = sysvars.reserv_secs)
+ 		ld		hl, (reserv_secs)		; HL = sysvars.reserv_secs
+ 		call	F_KRN_F16_SEC2BUFFER	; read FAT into RAM buffer
+ 		; Put 00 00 in all clusters for the file in the FAT in CF Buffer
+ 		ld		hl, (cur_file_1stcluster)	; HL = 1st cluster of the file
+ 		ld		de, CF_BUFFER_START			; DE = pointer to start of CF Buffer
+updfatloop:
+		add		hl, hl					; each cluster is 2 bytes
+		ld		(tmp_addr2), hl			; store cluster number x 2
+		ld		ix, (tmp_addr2)			; IX  = cluster number x 2
+		add		ix, de					; IX = pointer within CF Buffer + cluster number x 2
+		ld		a, (ix + 0)				; A = LSB of the cluster
+		cp		$FF						; is it $FF? (i.e. last cluster of the file)
+		jp		z, uptfatlast			; yes, then almost finished
+		ld		l, (ix + 0)				; no, load value
+		ld		h, (ix + 1)				;	in HL
+		ld		(ix + 0), 0				; update FAT in CF Buffer
+		ld		(ix + 1), 0				;	with 00 00
+		jp		updfatloop				; do next cluster in the series
+uptfatlast:	
+		ld		(ix + 0), 0				; update FAT in CF Buffer
+		ld		(ix + 1), 0				;	with 00 00
+		; Change "partition state" to FF F7
+		ld		a, $F7
+		call	F_KRN_F16_UPD_PARTSTATE
+		; Save FAT in CF Buffer to disk
+		ld		hl, (reserv_secs)		; HL = sysvars.reserv_secs
+		ex		de, hl					; D sector address LBA 1 (bits 8-15)
+										; E sector address LBA 0 (bits 0-7)
+		ld		bc, 0					; sector address LBA 3 (bits 24-27) and sector address LBA 2 (bits 16-23)
+		call	F_BIOS_CF_WRITE_SEC		; Write a Sector (512 bytes) byte by byte from CF_BUFFER_START in RAM to the CF card
+		; Change "partition state" to FF FF
+		ld		a, $FF
+		call	F_KRN_F16_UPD_PARTSTATE
+		or		a						; reset Carry Flag
+		ret
+rmvendwitherror:
 		scf								; set Carry Flag
 		ret
 ;------------------------------------------------------------------------------
@@ -1340,6 +1351,64 @@ F_KRN_F16_CPYRAM2CFBUF:
 		ld		(tmp_addr1), hl			; backup start_address in RAM
 		ret
 ;------------------------------------------------------------------------------
+F_KRN_F16_UPTDATETIMESYSVARS:
+; Updates sysvars.cur_file_timemod and sysvars.cur_file_datemod
+; to the current time and date returned from the RTC
+		; cur_file_timemod = current time
+		call	F_KRN_RTC_GETTIME		; Get current time
+		call	F_KRN_F16_ENCODE_FILETIME
+		ld		de, cur_file_timemod
+		ld		a, l
+		ld		(de), a
+		inc		de
+		ld		a, h
+		ld		(de), a
+		; cur_file_datemod = current date
+		call	F_KRN_RTC_GETDATE		; Get current date
+		call	F_KRN_F16_ENCODE_FILEDATE
+		ld		de, cur_file_datemod
+		ld		a, l
+		ld		(de), a
+		inc		de
+		ld		a, h
+		ld		(de), a
+		ret
+;------------------------------------------------------------------------------
+F_KRN_F16_UPDDIRENTRYBUFFER:
+; Change filename, extension, time last modified and date last modified
+; in Directory Entry in CF Buffer
+		ld		a, (tmp_byte)			; entry number within the sector
+		ld		e, a					; E = entry number within the sector
+		ld		d, 0
+		ld		a, 32					; each entry is 32 bytes
+		call	F_KRN_MULTIPLY816_SLOW	; HL = A * DE
+		ex		de, hl					; DE = entry position within the sector
+		ld		hl, CF_BUFFER_START		; pointer to start of CF Buffer
+		add		hl, de					; HL = start of CF Buffer + entry position within the sector
+
+		ld		de, cur_file_name
+		ld		b, 8					; filename is 8 bytes
+		ex		de, hl
+		call	F_KRN_STRCPY			; update Directory Entry's filename
+		ex		de, hl
+		ld		de, cur_file_extension
+		ld		b, 3					; extension is 3 bytes
+		ex		de, hl
+		call	F_KRN_STRCPY			; update Directory Entry's extension
+		ex		de, hl
+		ld		de, 11					; skip 11 bytes (i.e. file attribs. and reserved)
+		add		hl, de
+		ld		de, cur_file_timemod
+		ld		b, 2					; time modif. is 2 bytes
+		ex		de, hl
+		call	F_KRN_STRCPY			; update Directory Entry's time modified
+		ex		de, hl
+		ld		de, cur_file_datemod
+		ld		b, 2					; time modif. is 2 bytes
+		ex		de, hl
+		call	F_KRN_STRCPY			; update Directory Entry's date modified
+		ret
+;------------------------------------------------------------------------------
 ;F_KRN_F16_GETCLUSTER:
 ;; Gets the Cluster number of a directory entry
 ;; IN <= A = Directory entry number (there are 512/32 = 16 entries in each sector)
@@ -1372,6 +1441,6 @@ error_4002:
 		.BYTE	CR, LF
 		.BYTE	"ERROR: invalid Boot Sector signature. System halted!", 0
 error_4003:
- 		.BYTE	CR, LF
+ 		.BYTE	CR, LF, CR, LF
  		.BYTE	"WARNING: system was stop during a write-to-disk operation", CR, LF
-		.BYTE	"         Some file(s) may be missing.", CR, LF, 0
+		.BYTE	"         Some files may be missing.", CR, LF, 0

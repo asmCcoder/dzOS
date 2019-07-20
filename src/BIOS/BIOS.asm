@@ -83,7 +83,7 @@ ram_is_32kb:
 ;------------------------------------------------------------------------------
 F_BIOS_WIPE_RAM:
 ; Sets zeros (00h) in all RAM addresses after the SysVars area
-		; ToDo - after emoving ACIA code, 
+		; ToDo - after removing ACIA code, 
 		; 		 uncomment this line and remove the line after
 ;		ld		hl, STACK_END + 1		; start address to wipe
 		ld		hl, ACIA_BUFFERS_END	; start address to wipe

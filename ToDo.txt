@@ -1,0 +1,12 @@
+src/BIOS/BIOS.asm:86:		; ToDo - after removing ACIA code, 
+src/CLI.asm:57:print_avail_ram:	; <<<<	ToDo - it doesn't work >>>>
+src/CLI.asm:951:_CMD_TEST		.BYTE	"test", 0		; ToDo - remove this and all code related
+src/kernel/kernel.fat16.asm:245:loadsecsloop: ; >>>> ToDo - Should only load number of bytes equal to file size. Otherwise is loading rubbish at the end <<<<
+src/kernel/kernel.fat16.asm:426:		; ToDo - Extract seconds
+src/kernel/kernel.fat16.asm:556:		ret		z						; yes, exit routine				ToDo - Is this right? What about other sectors?
+src/kernel/kernel.fat16.asm:980:;		; >>>> ToDo - Catastrophe!!!! missing a pop hl coming from jp z,getend <<<<
+src/kernel/kernel.fat16.asm:1316:		; ToDo Convert hh mm ss to FAT16 notation
+src/kernel/kernel.fat16.asm:1420:;		; ToDo 
+src/kernel/kernel.rtc.asm:43:		; ToDo - get hh mm ss from RTC. Right now is 11:12:13 for testing
+src/kernel/kernel.rtc.asm:58:		; ToDo - get dd mm yyyy from RTC. Right now is 04/10/1974 for testing
+src/kernel/kernel.string.asm:55:; ToDo 	- Check for special characters
