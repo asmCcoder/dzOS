@@ -125,6 +125,8 @@ ramsizeprinted:
 ;		call	F_KRN_EMPTYLINES
 
 		jp		CLI_START				; transfer control to CLI
+;		jp		BASIC_START				; transfer control to Wagon BASIC
+
 noCFdrive:
 		ld		hl, krn_msg_notfound
 		call	F_KRN_WRSTR
